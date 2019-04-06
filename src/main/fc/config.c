@@ -63,6 +63,7 @@
 #include "sensors/acceleration.h"
 #include "sensors/battery.h"
 #include "sensors/gyro.h"
+#include "sensors/rpm_filter.h"
 
 #include "scheduler/scheduler.h"
 
@@ -74,10 +75,11 @@ pidProfile_t *currentPidProfile;
 
 #define DYNAMIC_FILTER_MAX_SUPPORTED_LOOP_TIME HZ_TO_INTERVAL_US(2000)
 
-PG_REGISTER_WITH_RESET_TEMPLATE(pilotConfig_t, pilotConfig, PG_PILOT_CONFIG, 0);
+PG_REGISTER_WITH_RESET_TEMPLATE(pilotConfig_t, pilotConfig, PG_PILOT_CONFIG, 1);
 
 PG_RESET_TEMPLATE(pilotConfig_t, pilotConfig,
-    .name = { 0 }
+    .name = { 0 },
+    .displayName = { 0 },
 );
 
 PG_REGISTER_WITH_RESET_TEMPLATE(systemConfig_t, systemConfig, PG_SYSTEM_CONFIG, 2);
@@ -139,12 +141,14 @@ static void activateConfig(void)
     rcControlsInit();
 
     failsafeReset();
+#ifdef USE_ACC
     setAccelerationTrims(&accelerometerConfigMutable()->accZero);
     accInitFilters();
+#endif
 
     imuConfigure(throttleCorrectionConfig()->throttle_correction_angle, throttleCorrectionConfig()->throttle_correction_value);
 
-#ifdef USE_LED_STRIP
+#if defined(USE_LED_STRIP_STATUS_MODE)
     reevaluateLedConfig();
 #endif
 }
@@ -186,27 +190,27 @@ static void validateAndFixConfig(void)
         featureDisable(FEATURE_GPS);
     }
 
-    if (systemConfig()->activeRateProfile >= CONTROL_RATE_PROFILE_COUNT) {
-        systemConfigMutable()->activeRateProfile = 0;
-    }
-    loadControlRateProfile();
-
-    if (systemConfig()->pidProfileIndex >= MAX_PROFILE_COUNT) {
-        systemConfigMutable()->pidProfileIndex = 0;
-    }
-    loadPidProfile();
-
-    // Prevent invalid notch cutoff
-    if (currentPidProfile->dterm_notch_cutoff >= currentPidProfile->dterm_notch_hz) {
-        currentPidProfile->dterm_notch_hz = 0;
-    }
+    for (unsigned i = 0; i < PID_PROFILE_COUNT; i++) {
+        // Prevent invalid notch cutoff
+        if (pidProfilesMutable(i)->dterm_notch_cutoff >= pidProfilesMutable(i)->dterm_notch_hz) {
+            pidProfilesMutable(i)->dterm_notch_hz = 0;
+        }
 
 #ifdef USE_DYN_LPF
-    //PRevent invalid dynamic lowpass
-    if (currentPidProfile->dyn_lpf_dterm_min_hz > currentPidProfile->dyn_lpf_dterm_max_hz) {
-        currentPidProfile->dyn_lpf_dterm_min_hz = 0;
-    }
+        //Prevent invalid dynamic lowpass
+        if (pidProfilesMutable(i)->dyn_lpf_dterm_min_hz > pidProfilesMutable(i)->dyn_lpf_dterm_max_hz) {
+            pidProfilesMutable(i)->dyn_lpf_dterm_min_hz = 0;
+        }
 #endif
+
+        if (pidProfilesMutable(i)->motor_output_limit > 100 || pidProfilesMutable(i)->motor_output_limit == 0) {
+            pidProfilesMutable(i)->motor_output_limit = 100;
+        }
+
+        if (pidProfilesMutable(i)->auto_profile_cell_count > MAX_AUTO_DETECT_CELL_COUNT || pidProfilesMutable(i)->auto_profile_cell_count < AUTO_PROFILE_CELL_COUNT_CHANGE) {
+            pidProfilesMutable(i)->auto_profile_cell_count = AUTO_PROFILE_CELL_COUNT_STAY;
+        }
+    }
 
     if (motorConfig()->dev.motorPwmProtocol == PWM_TYPE_BRUSHED) {
         featureDisable(FEATURE_3D);
@@ -279,7 +283,7 @@ static void validateAndFixConfig(void)
     }
 
     if (!rcSmoothingIsEnabled() || rxConfig()->rcInterpolationChannels == INTERPOLATION_CHANNELS_T) {
-        for (unsigned i = 0; i < MAX_PROFILE_COUNT; i++) {
+        for (unsigned i = 0; i < PID_PROFILE_COUNT; i++) {
             pidProfilesMutable(i)->pid[PID_ROLL].F = 0;
             pidProfilesMutable(i)->pid[PID_PITCH].F = 0;
         }
@@ -289,7 +293,7 @@ static void validateAndFixConfig(void)
         (rxConfig()->rcInterpolationChannels != INTERPOLATION_CHANNELS_RPY &&
          rxConfig()->rcInterpolationChannels != INTERPOLATION_CHANNELS_RPYT)) {
 
-        for (unsigned i = 0; i < MAX_PROFILE_COUNT; i++) {
+        for (unsigned i = 0; i < PID_PROFILE_COUNT; i++) {
             pidProfilesMutable(i)->pid[PID_YAW].F = 0;
         }
     }
@@ -299,7 +303,7 @@ static void validateAndFixConfig(void)
         !(rxConfig()->rcInterpolationChannels == INTERPOLATION_CHANNELS_RPYT
         || rxConfig()->rcInterpolationChannels == INTERPOLATION_CHANNELS_T
         || rxConfig()->rcInterpolationChannels == INTERPOLATION_CHANNELS_RPT)) {
-        for (unsigned i = 0; i < MAX_PROFILE_COUNT; i++) {
+        for (unsigned i = 0; i < PID_PROFILE_COUNT; i++) {
             pidProfilesMutable(i)->throttle_boost = 0;
         }
     }
@@ -325,6 +329,16 @@ static void validateAndFixConfig(void)
         featureDisable(FEATURE_ESC_SENSOR);
     }
 #endif
+
+    for (int i = 0; i < MAX_MODE_ACTIVATION_CONDITION_COUNT; i++) {
+        const modeActivationCondition_t *mac = modeActivationConditions(i);
+
+        if (mac->linkedTo) {
+            if (mac->modeId == BOXARM || isModeActivationConditionLinked(mac->linkedTo)) {
+                removeModeActivationCondition(mac->modeId);
+            }
+        }
+    }
 
 // clear features that are not supported.
 // I have kept them all here in one place, some could be moved to sections of code above.
@@ -419,8 +433,31 @@ static void validateAndFixConfig(void)
 #endif
 
 #if defined(USE_DSHOT_TELEMETRY)
-    if (motorConfig()->dev.useBurstDshot && motorConfig()->dev.useDshotTelemetry) {
+    bool usingDshotProtocol;
+    switch (motorConfig()->dev.motorPwmProtocol) {
+    case PWM_TYPE_PROSHOT1000:
+    case PWM_TYPE_DSHOT1200:
+    case PWM_TYPE_DSHOT600:
+    case PWM_TYPE_DSHOT300:
+    case PWM_TYPE_DSHOT150:
+        usingDshotProtocol = true;
+        break;
+    default:
+        usingDshotProtocol = false;
+        break;
+    }
+
+    if ((!usingDshotProtocol || motorConfig()->dev.useBurstDshot || !systemConfig()->schedulerOptimizeRate)
+        && motorConfig()->dev.useDshotTelemetry) {
         motorConfigMutable()->dev.useDshotTelemetry = false;
+    }
+#endif
+
+    // Temporary workaround until RPM Filter supports dual-gyro using both sensors
+    // Once support is added remove this block
+#if defined(USE_MULTI_GYRO) && defined(USE_RPM_FILTER)
+    if (gyroConfig()->gyro_to_use == GYRO_CONFIG_USE_GYRO_BOTH && isRpmFilterEnabled()) {
+        gyroConfigMutable()->gyro_to_use = GYRO_CONFIG_USE_GYRO_1;
     }
 #endif
 
@@ -455,21 +492,11 @@ void validateAndFixGyroConfig(void)
     if (gyroConfig()->gyro_hardware_lpf == GYRO_HARDWARE_LPF_1KHZ_SAMPLE) {
         pidConfigMutable()->pid_process_denom = 1; // When gyro set to 1khz always set pid speed 1:1 to sampling speed
         gyroConfigMutable()->gyro_sync_denom = 1;
-        gyroConfigMutable()->gyro_use_32khz = false;
     }
 
-    if (gyroConfig()->gyro_use_32khz) {
-        // F1 and F3 can't handle high sample speed.
 #if defined(STM32F1)
-        gyroConfigMutable()->gyro_sync_denom = MAX(gyroConfig()->gyro_sync_denom, 16);
-#elif defined(STM32F3)
-        gyroConfigMutable()->gyro_sync_denom = MAX(gyroConfig()->gyro_sync_denom, 4);
+    gyroConfigMutable()->gyro_sync_denom = MAX(gyroConfig()->gyro_sync_denom, 3);
 #endif
-    } else {
-#if defined(STM32F1)
-        gyroConfigMutable()->gyro_sync_denom = MAX(gyroConfig()->gyro_sync_denom, 3);
-#endif
-    }
 
     float samplingTime;
     switch (gyroMpuDetectionResult()->sensor) {
@@ -493,9 +520,7 @@ void validateAndFixGyroConfig(void)
             break;
         }
     }
-    if (gyroConfig()->gyro_use_32khz) {
-        samplingTime = 0.00003125;
-    }
+
 
     // check for looptime restrictions based on motor protocol. Motor times have safety margin
     float motorUpdateRestriction;
@@ -549,6 +574,16 @@ void validateAndFixGyroConfig(void)
     }
 #endif // USE_SDCARD
 #endif // USE_BLACKBOX
+
+    if (systemConfig()->activeRateProfile >= CONTROL_RATE_PROFILE_COUNT) {
+        systemConfigMutable()->activeRateProfile = 0;
+    }
+    loadControlRateProfile();
+
+    if (systemConfig()->pidProfileIndex >= PID_PROFILE_COUNT) {
+        systemConfigMutable()->pidProfileIndex = 0;
+    }
+    loadPidProfile();
 }
 
 bool readEEPROM(void)
@@ -623,9 +658,34 @@ void saveConfigAndNotify(void)
     beeperConfirmationBeeps(1);
 }
 
+void changePidProfileFromCellCount(uint8_t cellCount)
+{
+    if (currentPidProfile->auto_profile_cell_count == cellCount || currentPidProfile->auto_profile_cell_count == AUTO_PROFILE_CELL_COUNT_STAY) {
+        return;
+    }
+
+    unsigned profileIndex = (systemConfig()->pidProfileIndex + 1) % PID_PROFILE_COUNT;
+    int matchingProfileIndex = -1;
+    while (profileIndex != systemConfig()->pidProfileIndex) {
+        if (pidProfiles(profileIndex)->auto_profile_cell_count == cellCount) {
+            matchingProfileIndex = profileIndex;
+
+            break;
+        } else if (matchingProfileIndex < 0 && pidProfiles(profileIndex)->auto_profile_cell_count == AUTO_PROFILE_CELL_COUNT_STAY) {
+            matchingProfileIndex = profileIndex;
+        }
+
+        profileIndex = (profileIndex + 1) % PID_PROFILE_COUNT;
+    }
+
+    if (matchingProfileIndex >= 0) {
+        changePidProfile(matchingProfileIndex);
+    }
+}
+
 void changePidProfile(uint8_t pidProfileIndex)
 {
-    if (pidProfileIndex < MAX_PROFILE_COUNT) {
+    if (pidProfileIndex < PID_PROFILE_COUNT) {
         systemConfigMutable()->pidProfileIndex = pidProfileIndex;
         loadPidProfile();
 

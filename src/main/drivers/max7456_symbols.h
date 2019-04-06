@@ -37,11 +37,13 @@
 #define SYM_HOME                    0x04
 #define SYM_AIRCRAFT                0x05
 
-// Unit Icon´s (Metric)
+// Unit Icons (Metric)
 #define SYM_M                       0x0C
+#define SYM_C                       0x0E
 
-// Unit Icon´s (Imperial)
+// Unit Icons (Imperial)
 #define SYM_FT                      0x0F
+#define SYM_F                       0x0D
 
 // Heading Graphics
 #define SYM_HEADING_N               0x18
@@ -122,5 +124,17 @@
 #define SYM_ON_M                    0x9B
 #define SYM_FLY_M                   0x9C
 
+// Speed
+#define SYM_KPH                     0x4B  // we don't have a KPH symbol so use 'K'
+#define SYM_MPH                     0x4D  // we don't have a MPH symbol so use 'M'
+
 // Menu cursor
 #define SYM_CURSOR                  SYM_AH_LEFT
+
+// Stick overlays
+#define SYM_STICK_OVERLAY_SPRITE_HIGH 0x08
+#define SYM_STICK_OVERLAY_SPRITE_MID  0x09
+#define SYM_STICK_OVERLAY_SPRITE_LOW  0x0A
+#define SYM_STICK_OVERLAY_CENTER      0x0B
+#define SYM_STICK_OVERLAY_VERTICAL    0x16
+#define SYM_STICK_OVERLAY_HORIZONTAL  0x17

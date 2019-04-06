@@ -19,7 +19,6 @@
  */
 
 #pragma once
-#define TARGET_VALIDATECONFIG
 
 #define TARGET_BOARD_IDENTIFIER "DLF7"
 #define USBD_PRODUCT_STRING  "DALRCF722DUAL"
@@ -31,7 +30,7 @@
 #define BEEPER_PIN              PC13
 #define BEEPER_INVERTED
 
-#define USE_DUAL_GYRO
+#define USE_MULTI_GYRO
 #define USE_EXTI
 #define USE_GYRO_EXTI
 #define GYRO_1_EXTI_PIN         PB10

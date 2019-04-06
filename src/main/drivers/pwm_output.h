@@ -22,6 +22,8 @@
 
 #include "platform.h"
 
+#include "common/time.h"
+
 #include "drivers/io_types.h"
 #include "drivers/pwm_output_counts.h"
 #include "drivers/timer.h"
@@ -31,6 +33,9 @@
 #define DSHOT_MAX_COMMAND 47
 #define DSHOT_TELEMETRY_INPUT_LEN 32
 #define PROSHOT_TELEMETRY_INPUT_LEN 8
+
+#define MOTOR_OUTPUT_LIMIT_PERCENT_MIN 1
+#define MOTOR_OUTPUT_LIMIT_PERCENT_MAX 100
 
 /*
   DshotSettingRequest (KISS24). Spin direction, 3d and save Settings reqire 10 requests.. and the TLM Byte must always be high if 1-47 are used to send settings
@@ -109,6 +114,8 @@ typedef enum {
 #define PROSHOT_BASE_SYMBOL          24 // 1uS
 #define PROSHOT_BIT_WIDTH            3
 #define MOTOR_NIBBLE_LENGTH_PROSHOT  96 // 4uS
+
+#define DSHOT_TELEMETRY_DEADTIME_US   (2 * 30 + 10) // 2 * 30uS to switch lines plus 10us grace period
 #endif
 
 
@@ -125,6 +132,7 @@ typedef struct {
 #endif
     uint16_t dmaBurstLength;
     uint32_t dmaBurstBuffer[DSHOT_DMA_BUFFER_SIZE * 4];
+    timeUs_t inputDirectionStampUs;
 #endif
     uint16_t timerDmaSources;
 } motorDmaTimer_t;
@@ -143,15 +151,24 @@ typedef struct {
     volatile bool isInput;
     volatile bool hasTelemetry;
     uint16_t dshotTelemetryValue;
+    timeDelta_t dshotTelemetryDeadtimeUs;
+    bool dshotTelemetryActive;
+#ifdef USE_HAL_DRIVER
+    LL_TIM_OC_InitTypeDef ocInitStruct;
+    LL_TIM_IC_InitTypeDef icInitStruct;
+    LL_DMA_InitTypeDef    dmaInitStruct;
+    uint32_t llChannel;
+#else
     TIM_OCInitTypeDef ocInitStruct;
     TIM_ICInitTypeDef icInitStruct;
     DMA_InitTypeDef   dmaInitStruct;
+#endif
     uint8_t dmaInputLen;
+#endif
 #ifdef STM32F3
     DMA_Channel_TypeDef *dmaRef;
 #else
     DMA_Stream_TypeDef *dmaRef;
-#endif
 #endif
 #endif
     motorDmaTimer_t *timer;
@@ -172,7 +189,7 @@ motorDmaOutput_t *getMotorDmaOutput(uint8_t index);
 struct timerHardware_s;
 typedef void pwmWriteFn(uint8_t index, float value);  // function pointer used to write motors
 typedef void pwmCompleteWriteFn(uint8_t motorCount);   // function pointer used after motors are written
-typedef void pwmStartWriteFn(uint8_t motorCount);   // function pointer used before motors are written
+typedef bool pwmStartWriteFn(uint8_t motorCount);   // function pointer used before motors are written
 
 typedef struct {
     volatile timCCR_t *ccr;
@@ -233,7 +250,7 @@ void pwmWriteDshotCommand(uint8_t index, uint8_t motorCount, uint8_t command, bo
 void pwmWriteDshotInt(uint8_t index, uint16_t value);
 void pwmDshotMotorHardwareConfig(const timerHardware_t *timerHardware, uint8_t motorIndex, motorPwmProtocolTypes_e pwmProtocolType, uint8_t output);
 #ifdef USE_DSHOT_TELEMETRY
-void pwmStartDshotMotorUpdate(uint8_t motorCount);
+bool pwmStartDshotMotorUpdate(uint8_t motorCount);
 #endif
 void pwmCompleteDshotMotorUpdate(uint8_t motorCount);
 
@@ -243,6 +260,7 @@ bool pwmDshotCommandIsProcessing(void);
 uint8_t pwmGetDshotCommand(uint8_t index);
 bool pwmDshotCommandOutputIsEnabled(uint8_t motorCount);
 uint16_t getDshotTelemetry(uint8_t index);
+bool isDshotMotorTelemetryActive(uint8_t motorIndex);
 
 #endif
 
@@ -256,7 +274,7 @@ void pwmOutConfig(timerChannel_t *channel, const timerHardware_t *timerHardware,
 void pwmWriteMotor(uint8_t index, float value);
 void pwmShutdownPulsesForAllMotors(uint8_t motorCount);
 void pwmCompleteMotorUpdate(uint8_t motorCount);
-void pwmStartMotorUpdate(uint8_t motorCount);
+bool pwmStartMotorUpdate(uint8_t motorCount);
 
 void pwmWriteServo(uint8_t index, float value);
 

@@ -69,6 +69,10 @@
 
     #define DEFAULT_FEATURES        FEATURE_OSD
 
+    #define USE_BARO
+    #define USE_BARO_BMP280
+    #define BMP280_I2C_INSTANCE     I2CDEV_1
+
 #else
 
     #define USE_BARO

@@ -605,7 +605,7 @@ const clivalue_t valueTable[] = {
     { "dyn_notch_range",           VAR_UINT8   | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_DYNAMIC_FILTER_RANGE }, PG_GYRO_CONFIG, offsetof(gyroConfig_t, dyn_notch_range) },
     { "dyn_notch_width_percent",   VAR_UINT8   | MASTER_VALUE, .config.minmaxUnsigned = { 0, 20 }, PG_GYRO_CONFIG, offsetof(gyroConfig_t, dyn_notch_width_percent) },
     { "dyn_notch_q",               VAR_UINT16  | MASTER_VALUE, .config.minmaxUnsigned = { 1, 1000 }, PG_GYRO_CONFIG, offsetof(gyroConfig_t, dyn_notch_q) },
-    { "dyn_notch_min_hz",          VAR_UINT16  | MASTER_VALUE, .config.minmaxUnsigned = { 100, 1000 }, PG_GYRO_CONFIG, offsetof(gyroConfig_t, dyn_notch_min_hz) },
+    { "dyn_notch_min_hz",          VAR_UINT16  | MASTER_VALUE, .config.minmaxUnsigned = { 60, 1000 }, PG_GYRO_CONFIG, offsetof(gyroConfig_t, dyn_notch_min_hz) },
 #endif
 #ifdef USE_DYN_LPF
     { "dyn_lpf_gyro_min_hz",        VAR_UINT16 | MASTER_VALUE, .config.minmaxUnsigned = { 0, 1000 }, PG_GYRO_CONFIG, offsetof(gyroConfig_t, dyn_lpf_gyro_min_hz) },
@@ -890,7 +890,9 @@ const clivalue_t valueTable[] = {
     { "gps_rescue_min_sats",        VAR_UINT8  | MASTER_VALUE, .config.minmaxUnsigned = { 5, 50 }, PG_GPS_RESCUE, offsetof(gpsRescueConfig_t, minSats) },
     { "gps_rescue_min_dth",         VAR_UINT16  | MASTER_VALUE, .config.minmaxUnsigned = { 50, 1000 }, PG_GPS_RESCUE, offsetof(gpsRescueConfig_t, minRescueDth) },
     { "gps_rescue_allow_arming_without_fix", VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_GPS_RESCUE, offsetof(gpsRescueConfig_t, allowArmingWithoutFix) },
+#ifdef USE_MAG
     { "gps_rescue_use_mag",         VAR_UINT8  | MASTER_VALUE | MODE_LOOKUP, .config.lookup = { TABLE_OFF_ON }, PG_GPS_RESCUE, offsetof(gpsRescueConfig_t, useMag) },
+#endif
 #endif
 #endif
 

@@ -37,7 +37,7 @@
 #include "sensors/current.h"
 #include "sensors/voltage.h"
 
-#include "fc/config.h"
+#include "config/config.h"
 
 voltageMeterSource_e batteryConfig_voltageMeterSource;
 currentMeterSource_e batteryConfig_currentMeterSource;
@@ -54,7 +54,7 @@ int16_t currentSensorVirtualConfig_scale;
 int16_t currentSensorVirtualConfig_offset;
 #endif
 
-static long cmsx_Power_onEnter(void)
+static const void *cmsx_Power_onEnter(void)
 {
     batteryConfig_voltageMeterSource = batteryConfig()->voltageMeterSource;
     batteryConfig_currentMeterSource = batteryConfig()->currentMeterSource;
@@ -71,10 +71,10 @@ static long cmsx_Power_onEnter(void)
     currentSensorVirtualConfig_offset = currentSensorVirtualConfig()->offset;
 #endif
 
-    return 0;
+    return NULL;
 }
 
-static long cmsx_Power_onExit(const OSD_Entry *self)
+static const void *cmsx_Power_onExit(const OSD_Entry *self)
 {
     UNUSED(self);
 
@@ -93,7 +93,7 @@ static long cmsx_Power_onExit(const OSD_Entry *self)
     currentSensorVirtualConfigMutable()->offset = currentSensorVirtualConfig_offset;
 #endif
 
-    return 0;
+    return NULL;
 }
 
 static const OSD_Entry cmsx_menuPowerEntries[] =
@@ -126,6 +126,7 @@ CMS_Menu cmsx_menuPower = {
 #endif
     .onEnter = cmsx_Power_onEnter,
     .onExit = cmsx_Power_onExit,
+    .onDisplayUpdate = NULL,
     .entries = cmsx_menuPowerEntries
 };
 

@@ -27,6 +27,7 @@
 
 #include "config/feature.h"
 
+#include "drivers/dshot_command.h"
 #include "drivers/io.h"
 #include "drivers/pwm_output.h"
 #include "drivers/sound_beeper.h"
@@ -35,7 +36,7 @@
 
 #include "flight/mixer.h"
 
-#include "fc/config.h"
+#include "config/config.h"
 #include "fc/core.h"
 #include "fc/runtime_config.h"
 
@@ -248,7 +249,7 @@ void beeper(beeperMode_e mode)
 {
     if (
         mode == BEEPER_SILENCE || (
-            (beeperConfigMutable()->beeper_off_flags & BEEPER_GET_FLAG(BEEPER_USB))
+            (beeperConfig()->beeper_off_flags & BEEPER_GET_FLAG(BEEPER_USB))
             && getBatteryState() == BATTERY_NOT_PRESENT
         )
     ) {
@@ -360,7 +361,7 @@ void beeperWarningBeeps(uint8_t beepCount)
 #ifdef USE_GPS
 static void beeperGpsStatus(void)
 {
-    if (!(beeperConfigMutable()->beeper_off_flags & BEEPER_GET_FLAG(BEEPER_GPS_STATUS))) {
+    if (!(beeperConfig()->beeper_off_flags & BEEPER_GET_FLAG(BEEPER_GPS_STATUS))) {
         // if GPS fix then beep out number of satellites
         if (STATE(GPS_FIX) && gpsSol.numSat >= 5) {
             uint8_t i = 0;
@@ -410,13 +411,13 @@ void beeperUpdate(timeUs_t currentTimeUs)
 
             if ((currentTimeUs - getLastDisarmTimeUs() > DSHOT_BEACON_GUARD_DELAY_US) && !isTryingToArm()) {
                 lastDshotBeaconCommandTimeUs = currentTimeUs;
-                pwmWriteDshotCommand(ALL_MOTORS, getMotorCount(), beeperConfig()->dshotBeaconTone, false);
+                dshotCommandWrite(ALL_MOTORS, getMotorCount(), beeperConfig()->dshotBeaconTone, false);
             }
         }
 #endif
 
         if (currentBeeperEntry->sequence[beeperPos] != 0) {
-            if (!(beeperConfigMutable()->beeper_off_flags & BEEPER_GET_FLAG(currentBeeperEntry->mode))) {
+            if (!(beeperConfig()->beeper_off_flags & BEEPER_GET_FLAG(currentBeeperEntry->mode))) {
                 BEEP_ON;
                 beeperIsOn = true;
             }

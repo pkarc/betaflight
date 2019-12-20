@@ -49,7 +49,7 @@
 #include "drivers/time.h"
 #include "drivers/sdcard.h"
 
-#include "fc/config.h"
+#include "config/config.h"
 
 #include "io/asyncfatfs/asyncfatfs.h"
 #include "io/flashfs.h"
@@ -126,9 +126,11 @@ static void cmsx_Blackbox_GetDeviceStatus(void)
         if (storageDeviceIsWorking) {
             tfp_sprintf(cmsx_BlackboxStatus, "READY");
 
-            const flashGeometry_t *geometry = flashfsGetGeometry();
+            const flashPartition_t *flashPartition = flashPartitionFindByType(FLASH_PARTITION_TYPE_FLASHFS);
+            const flashGeometry_t *flashGeometry = flashGetGeometry();
+
             storageUsed = flashfsGetOffset() / 1024;
-            storageFree = (geometry->totalSize / 1024) - storageUsed;
+            storageFree = ((FLASH_PARTITION_SECTOR_COUNT(flashPartition) * flashGeometry->sectorSize) / 1024) - storageUsed;
         } else {
             tfp_sprintf(cmsx_BlackboxStatus, "FAULT");
         }
@@ -146,16 +148,16 @@ static void cmsx_Blackbox_GetDeviceStatus(void)
 }
 
 #ifdef USE_FLASHFS
-static long cmsx_EraseFlash(displayPort_t *pDisplay, const void *ptr)
+static const void *cmsx_EraseFlash(displayPort_t *pDisplay, const void *ptr)
 {
     UNUSED(ptr);
 
     if (!flashfsIsSupported()) {
-        return 0;
+        return NULL;
     }
 
     displayClearScreen(pDisplay);
-    displayWrite(pDisplay, 5, 3, "ERASING FLASH...");
+    displayWrite(pDisplay, 5, 3, DISPLAYPORT_ATTR_INFO, "ERASING FLASH...");
     displayResync(pDisplay); // Was max7456RefreshAll(); Why at this timing?
 
     flashfsEraseCompletely();
@@ -170,20 +172,20 @@ static long cmsx_EraseFlash(displayPort_t *pDisplay, const void *ptr)
     // Update storage device status to show new used space amount
     cmsx_Blackbox_GetDeviceStatus();
 
-    return 0;
+    return NULL;
 }
 #endif // USE_FLASHFS
 
-static long cmsx_Blackbox_onEnter(void)
+static const void *cmsx_Blackbox_onEnter(void)
 {
     cmsx_Blackbox_GetDeviceStatus();
     cmsx_BlackboxDevice = blackboxConfig()->device;
 
     blackboxConfig_p_ratio = blackboxConfig()->p_ratio;
-    return 0;
+    return NULL;
 }
 
-static long cmsx_Blackbox_onExit(const OSD_Entry *self)
+static const void *cmsx_Blackbox_onExit(const OSD_Entry *self)
 {
     UNUSED(self);
 
@@ -192,17 +194,18 @@ static long cmsx_Blackbox_onExit(const OSD_Entry *self)
         blackboxValidateConfig();
     }
     blackboxConfigMutable()->p_ratio = blackboxConfig_p_ratio;
-    return 0;
+
+    return NULL;
 }
 
 static const OSD_Entry cmsx_menuBlackboxEntries[] =
 {
     { "-- BLACKBOX --", OME_Label, NULL, NULL, 0},
-    { "DEVICE",      OME_TAB,     NULL,            &cmsx_BlackboxDeviceTable,                                 0 },
+    { "DEVICE",      OME_TAB,     NULL,            &cmsx_BlackboxDeviceTable,                                 REBOOT_REQUIRED },
     { "(STATUS)",    OME_String,  NULL,            &cmsx_BlackboxStatus,                                      0 },
     { "(USED)",      OME_String,  NULL,            &cmsx_BlackboxDeviceStorageUsed,                           0 },
     { "(FREE)",      OME_String,  NULL,            &cmsx_BlackboxDeviceStorageFree,                           0 },
-    { "P RATIO",     OME_UINT16,  NULL,            &(OSD_UINT16_t){ &blackboxConfig_p_ratio, 1, INT16_MAX, 1 },0 },
+    { "P RATIO",     OME_UINT16,  NULL,            &(OSD_UINT16_t){ &blackboxConfig_p_ratio, 1, INT16_MAX, 1 }, REBOOT_REQUIRED },
 
 #ifdef USE_FLASHFS
     { "ERASE FLASH", OME_Funcall, cmsx_EraseFlash, NULL,                                                      0 },
@@ -219,6 +222,7 @@ CMS_Menu cmsx_menuBlackbox = {
 #endif
     .onEnter = cmsx_Blackbox_onEnter,
     .onExit = cmsx_Blackbox_onExit,
+    .onDisplayUpdate = NULL,
     .entries = cmsx_menuBlackboxEntries
 };
 

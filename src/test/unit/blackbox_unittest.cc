@@ -20,12 +20,15 @@
 extern "C" {
     #include "platform.h"
 
+    #include "build/debug.h"
+
     #include "blackbox/blackbox.h"
     #include "common/utils.h"
 
     #include "pg/pg.h"
     #include "pg/pg_ids.h"
     #include "pg/rx.h"
+    #include "pg/motor.h"
 
     #include "drivers/accgyro/accgyro.h"
     #include "drivers/accgyro/gyro_sync.h"
@@ -122,16 +125,16 @@ TEST(BlackboxTest, Test_500Hz)
     // 500Hz PIDloop
     targetPidLooptime = 2000;
     blackboxInit();
-    EXPECT_EQ(true, blackboxShouldLogIFrame());
-    EXPECT_EQ(true, blackboxShouldLogPFrame());
+    EXPECT_TRUE(blackboxShouldLogIFrame());
+    EXPECT_TRUE(blackboxShouldLogPFrame());
     for (int ii = 0; ii < 15; ++ii) {
         blackboxAdvanceIterationTimers();
-        EXPECT_EQ(false, blackboxShouldLogIFrame());
-        EXPECT_EQ(true, blackboxShouldLogPFrame());
+        EXPECT_FALSE(blackboxShouldLogIFrame());
+        EXPECT_TRUE(blackboxShouldLogPFrame());
     }
     blackboxAdvanceIterationTimers();
-    EXPECT_EQ(true, blackboxShouldLogIFrame());
-    EXPECT_EQ(true, blackboxShouldLogPFrame());
+    EXPECT_TRUE(blackboxShouldLogIFrame());
+    EXPECT_TRUE(blackboxShouldLogPFrame());
 }
 
 TEST(BlackboxTest, Test_1kHz)
@@ -140,24 +143,24 @@ TEST(BlackboxTest, Test_1kHz)
     // 1kHz PIDloop
     targetPidLooptime = 1000;
     blackboxInit();
-    EXPECT_EQ(true, blackboxShouldLogIFrame());
-    EXPECT_EQ(true, blackboxShouldLogPFrame());
+    EXPECT_TRUE(blackboxShouldLogIFrame());
+    EXPECT_TRUE(blackboxShouldLogPFrame());
     EXPECT_EQ(0, blackboxSlowFrameIterationTimer);
-    EXPECT_EQ(false, blackboxSlowFrameIterationTimer >= blackboxSInterval);
+    EXPECT_FALSE(blackboxSlowFrameIterationTimer >= blackboxSInterval);
     blackboxSlowFrameIterationTimer = blackboxSInterval;
-    EXPECT_EQ(true, writeSlowFrameIfNeeded());
+    EXPECT_TRUE(writeSlowFrameIfNeeded());
     EXPECT_EQ(0, blackboxSlowFrameIterationTimer);
 
     for (int ii = 0; ii < 31; ++ii) {
         blackboxAdvanceIterationTimers();
-        EXPECT_EQ(false, blackboxShouldLogIFrame());
-        EXPECT_EQ(true, blackboxShouldLogPFrame());
+        EXPECT_FALSE(blackboxShouldLogIFrame());
+        EXPECT_TRUE(blackboxShouldLogPFrame());
         EXPECT_EQ(ii + 1, blackboxSlowFrameIterationTimer);
-        EXPECT_EQ(false, writeSlowFrameIfNeeded());
+        EXPECT_FALSE(writeSlowFrameIfNeeded());
     }
     blackboxAdvanceIterationTimers();
-    EXPECT_EQ(true, blackboxShouldLogIFrame());
-    EXPECT_EQ(true, blackboxShouldLogPFrame());
+    EXPECT_TRUE(blackboxShouldLogIFrame());
+    EXPECT_TRUE(blackboxShouldLogPFrame());
 }
 
 TEST(BlackboxTest, Test_2kHz)
@@ -168,29 +171,29 @@ TEST(BlackboxTest, Test_2kHz)
     blackboxInit();
     EXPECT_EQ(64, blackboxIInterval);
     EXPECT_EQ(2, blackboxPInterval);
-    EXPECT_EQ(true, blackboxShouldLogIFrame());
-    EXPECT_EQ(true, blackboxShouldLogPFrame());
+    EXPECT_TRUE(blackboxShouldLogIFrame());
+    EXPECT_TRUE(blackboxShouldLogPFrame());
     blackboxAdvanceIterationTimers();
-    EXPECT_EQ(false, blackboxShouldLogIFrame());
-    EXPECT_EQ(false, blackboxShouldLogPFrame());
+    EXPECT_FALSE(blackboxShouldLogIFrame());
+    EXPECT_FALSE(blackboxShouldLogPFrame());
 
     for (int ii = 0; ii < 31; ++ii) {
         blackboxAdvanceIterationTimers();
-        EXPECT_EQ(false, blackboxShouldLogIFrame());
-        EXPECT_EQ(true, blackboxShouldLogPFrame());
+        EXPECT_FALSE(blackboxShouldLogIFrame());
+        EXPECT_TRUE(blackboxShouldLogPFrame());
 
         blackboxAdvanceIterationTimers();
-        EXPECT_EQ(false, blackboxShouldLogIFrame());
-        EXPECT_EQ(false, blackboxShouldLogPFrame());
+        EXPECT_FALSE(blackboxShouldLogIFrame());
+        EXPECT_FALSE(blackboxShouldLogPFrame());
     }
 
     blackboxAdvanceIterationTimers();
-    EXPECT_EQ(true, blackboxShouldLogIFrame());
-    EXPECT_EQ(true, blackboxShouldLogPFrame());
+    EXPECT_TRUE(blackboxShouldLogIFrame());
+    EXPECT_TRUE(blackboxShouldLogPFrame());
 
     blackboxAdvanceIterationTimers();
-    EXPECT_EQ(false, blackboxShouldLogIFrame());
-    EXPECT_EQ(false, blackboxShouldLogPFrame());
+    EXPECT_FALSE(blackboxShouldLogIFrame());
+    EXPECT_FALSE(blackboxShouldLogPFrame());
 }
 
 TEST(BlackboxTest, Test_8kHz)
@@ -199,23 +202,23 @@ TEST(BlackboxTest, Test_8kHz)
     // 8kHz PIDloop
     targetPidLooptime = 125;
     blackboxInit();
-    EXPECT_EQ(true, blackboxShouldLogIFrame());
-    EXPECT_EQ(true, blackboxShouldLogPFrame());
+    EXPECT_TRUE(blackboxShouldLogIFrame());
+    EXPECT_TRUE(blackboxShouldLogPFrame());
     EXPECT_EQ(0, blackboxSlowFrameIterationTimer);
-    EXPECT_EQ(false, blackboxSlowFrameIterationTimer >= blackboxSInterval);
+    EXPECT_FALSE(blackboxSlowFrameIterationTimer >= blackboxSInterval);
     blackboxSlowFrameIterationTimer = blackboxSInterval;
-    EXPECT_EQ(true, writeSlowFrameIfNeeded());
+    EXPECT_TRUE(writeSlowFrameIfNeeded());
     EXPECT_EQ(0, blackboxSlowFrameIterationTimer);
 
     for (int ii = 0; ii < 255; ++ii) {
         blackboxAdvanceIterationTimers();
-        EXPECT_EQ(false, blackboxShouldLogIFrame());
+        EXPECT_FALSE(blackboxShouldLogIFrame());
         EXPECT_EQ(ii + 1, blackboxSlowFrameIterationTimer);
-        EXPECT_EQ(false, writeSlowFrameIfNeeded());
+        EXPECT_FALSE(writeSlowFrameIfNeeded());
     }
     blackboxAdvanceIterationTimers();
-    EXPECT_EQ(true, blackboxShouldLogIFrame());
-    EXPECT_EQ(true, blackboxShouldLogPFrame());
+    EXPECT_TRUE(blackboxShouldLogIFrame());
+    EXPECT_TRUE(blackboxShouldLogPFrame());
 }
 
 TEST(BlackboxTest, Test_zero_p_ratio)
@@ -226,17 +229,17 @@ TEST(BlackboxTest, Test_zero_p_ratio)
     blackboxInit();
     EXPECT_EQ(32, blackboxIInterval);
     EXPECT_EQ(0, blackboxPInterval);
-    EXPECT_EQ(true, blackboxShouldLogIFrame());
-    EXPECT_EQ(false, blackboxShouldLogPFrame());
+    EXPECT_TRUE(blackboxShouldLogIFrame());
+    EXPECT_FALSE(blackboxShouldLogPFrame());
 
     for (int ii = 0; ii < 31; ++ii) {
         blackboxAdvanceIterationTimers();
-        EXPECT_EQ(false, blackboxShouldLogIFrame());
-        EXPECT_EQ(false, blackboxShouldLogPFrame());
+        EXPECT_FALSE(blackboxShouldLogIFrame());
+        EXPECT_FALSE(blackboxShouldLogPFrame());
     }
     blackboxAdvanceIterationTimers();
-    EXPECT_EQ(true, blackboxShouldLogIFrame());
-    EXPECT_EQ(false, blackboxShouldLogPFrame());
+    EXPECT_TRUE(blackboxShouldLogIFrame());
+    EXPECT_FALSE(blackboxShouldLogPFrame());
 }
 
 TEST(BlackboxTest, Test_CalculatePDenom)
@@ -361,7 +364,8 @@ uint8_t armingFlags;
 uint8_t stateFlags;
 const uint32_t baudRates[] = {0, 9600, 19200, 38400, 57600, 115200, 230400, 250000,
         400000, 460800, 500000, 921600, 1000000, 1500000, 2000000, 2470000}; // see baudRate_e
-uint8_t debugMode;
+uint8_t debugMode = 0;
+int16_t debug[DEBUG16_VALUE_COUNT];
 int32_t blackboxHeaderBudget;
 gpsSolutionData_t gpsSol;
 int32_t GPS_home[2];
@@ -390,7 +394,7 @@ uint32_t serialTxBytesFree(const serialPort_t *) {return 0;}
 bool isSerialTransmitBufferEmpty(const serialPort_t *) {return false;}
 bool featureIsEnabled(uint32_t) {return false;}
 void mspSerialReleasePortIfAllocated(serialPort_t *) {}
-serialPortConfig_t *findSerialPortConfig(serialPortFunction_e ) {return NULL;}
+const serialPortConfig_t *findSerialPortConfig(serialPortFunction_e ) {return NULL;}
 serialPort_t *findSharedSerialPort(uint16_t , serialPortFunction_e ) {return NULL;}
 serialPort_t *openSerialPort(serialPortIdentifier_e, serialPortFunction_e, serialReceiveCallbackPtr, void *, uint32_t, portMode_e, portOptions_e) {return NULL;}
 void closeSerialPort(serialPort_t *) {}

@@ -74,14 +74,9 @@ typedef enum {
 typedef enum {
     RC_SMOOTHING_DERIVATIVE_OFF,
     RC_SMOOTHING_DERIVATIVE_PT1,
-    RC_SMOOTHING_DERIVATIVE_BIQUAD
+    RC_SMOOTHING_DERIVATIVE_BIQUAD,
+    RC_SMOOTHING_DERIVATIVE_AUTO,
 } rcSmoothingDerivativeFilter_e;
-
-typedef enum {
-    RC_SMOOTHING_VALUE_INPUT_ACTIVE,
-    RC_SMOOTHING_VALUE_DERIVATIVE_ACTIVE,
-    RC_SMOOTHING_VALUE_AVERAGE_FRAME
-} rcSmoothingInfoType_e;
 
 #define ROL_LO (1 << (2 * ROLL))
 #define ROL_CE (3 << (2 * ROLL))
@@ -125,10 +120,17 @@ typedef union rcSmoothingFilterTypes_u {
 typedef struct rcSmoothingFilter_s {
     bool filterInitialized;
     rcSmoothingFilterTypes_t filter[4];
+    rcSmoothingInputFilter_e inputFilterType;
+    uint8_t inputCutoffSetting;
     uint16_t inputCutoffFrequency;
+    rcSmoothingDerivativeFilter_e derivativeFilterTypeSetting;
+    rcSmoothingDerivativeFilter_e derivativeFilterType;
+    uint8_t derivativeCutoffSetting;
     uint16_t derivativeCutoffFrequency;
     int averageFrameTimeUs;
     rcSmoothingFilterTraining_t training;
+    uint8_t debugAxis;
+    uint8_t autoSmoothnessFactor;
 } rcSmoothingFilter_t;
 
 typedef struct rcControlsConfig_s {

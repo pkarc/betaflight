@@ -34,7 +34,7 @@
 #include "drivers/rx/rx_spi.h"
 #include "drivers/rx/rx_nrf24l01.h"
 
-#include "fc/config.h"
+#include "config/config.h"
 
 #include "pg/rx_spi.h"
 
@@ -55,19 +55,21 @@ uint16_t rxSpiRcData[MAX_SUPPORTED_RC_CHANNEL_COUNT];
 STATIC_UNIT_TESTED uint8_t rxSpiPayload[RX_SPI_MAX_PAYLOAD_SIZE];
 STATIC_UNIT_TESTED uint8_t rxSpiNewPacketAvailable; // set true when a new packet is received
 
-typedef bool (*protocolInitFnPtr)(const rxSpiConfig_t *rxSpiConfig, rxRuntimeConfig_t *rxRuntimeConfig);
+typedef bool (*protocolInitFnPtr)(const rxSpiConfig_t *rxSpiConfig, rxRuntimeState_t *rxRuntimeState);
 typedef rx_spi_received_e (*protocolDataReceivedFnPtr)(uint8_t *payload);
+typedef rx_spi_received_e (*protocolProcessFrameFnPtr)(uint8_t *payload);
 typedef void (*protocolSetRcDataFromPayloadFnPtr)(uint16_t *rcData, const uint8_t *payload);
 
 static protocolInitFnPtr protocolInit;
 static protocolDataReceivedFnPtr protocolDataReceived;
+static protocolProcessFrameFnPtr protocolProcessFrame;
 static protocolSetRcDataFromPayloadFnPtr protocolSetRcDataFromPayload;
 
-STATIC_UNIT_TESTED uint16_t rxSpiReadRawRC(const rxRuntimeConfig_t *rxRuntimeConfig, uint8_t channel)
+STATIC_UNIT_TESTED uint16_t rxSpiReadRawRC(const rxRuntimeState_t *rxRuntimeState, uint8_t channel)
 {
     STATIC_ASSERT(NRF24L01_MAX_PAYLOAD_SIZE <= RX_SPI_MAX_PAYLOAD_SIZE, NRF24L01_MAX_PAYLOAD_SIZE_larger_than_RX_SPI_MAX_PAYLOAD_SIZE);
 
-    if (channel >= rxRuntimeConfig->channelCount) {
+    if (channel >= rxRuntimeState->channelCount) {
         return 0;
     }
     if (rxSpiNewPacketAvailable) {
@@ -137,6 +139,7 @@ STATIC_UNIT_TESTED bool rxSpiSetProtocol(rx_spi_protocol_e protocol)
         protocolInit = frSkySpiInit;
         protocolDataReceived = frSkySpiDataReceived;
         protocolSetRcDataFromPayload = frSkySpiSetRcData;
+        protocolProcessFrame = frSkySpiProcessFrame;
 
         break;
 #endif // USE_RX_FRSKY_SPI
@@ -171,21 +174,49 @@ STATIC_UNIT_TESTED bool rxSpiSetProtocol(rx_spi_protocol_e protocol)
  * Called from updateRx in rx.c, updateRx called from taskUpdateRxCheck.
  * If taskUpdateRxCheck returns true, then taskUpdateRxMain will shortly be called.
  */
-static uint8_t rxSpiFrameStatus(rxRuntimeConfig_t *rxRuntimeConfig)
+static uint8_t rxSpiFrameStatus(rxRuntimeState_t *rxRuntimeState)
 {
-    UNUSED(rxRuntimeConfig);
+    UNUSED(rxRuntimeState);
 
-    if (protocolDataReceived(rxSpiPayload) == RX_SPI_RECEIVED_DATA) {
+    uint8_t status = RX_FRAME_PENDING;
+
+    rx_spi_received_e result = protocolDataReceived(rxSpiPayload);
+
+    if (result & RX_SPI_RECEIVED_DATA) {
         rxSpiNewPacketAvailable = true;
-        return RX_FRAME_COMPLETE;
+        status = RX_FRAME_COMPLETE;
     }
-    return RX_FRAME_PENDING;
+
+    if (result & RX_SPI_ROCESSING_REQUIRED) {
+        status |= RX_FRAME_PROCESSING_REQUIRED;
+    }
+
+    return status;
+}
+
+static bool rxSpiProcessFrame(const rxRuntimeState_t *rxRuntimeState)
+{
+    UNUSED(rxRuntimeState);
+
+    if (protocolProcessFrame) {
+        rx_spi_received_e result = protocolProcessFrame(rxSpiPayload);
+
+        if (result & RX_SPI_RECEIVED_DATA) {
+            rxSpiNewPacketAvailable = true;
+        }
+
+        if (result & RX_SPI_ROCESSING_REQUIRED) {
+            return false;
+        }
+    }
+
+    return true;
 }
 
 /*
  * Set and initialize the RX protocol
  */
-bool rxSpiInit(const rxSpiConfig_t *rxSpiConfig, rxRuntimeConfig_t *rxRuntimeConfig)
+bool rxSpiInit(const rxSpiConfig_t *rxSpiConfig, rxRuntimeState_t *rxRuntimeState)
 {
     bool ret = false;
 
@@ -194,13 +225,14 @@ bool rxSpiInit(const rxSpiConfig_t *rxSpiConfig, rxRuntimeConfig_t *rxRuntimeCon
     }
 
     if (rxSpiSetProtocol(rxSpiConfig->rx_spi_protocol)) {
-        ret = protocolInit(rxSpiConfig, rxRuntimeConfig);
+        ret = protocolInit(rxSpiConfig, rxRuntimeState);
     }
     rxSpiNewPacketAvailable = false;
-    rxRuntimeConfig->rxRefreshRate = 20000;
+    rxRuntimeState->rxRefreshRate = 20000;
 
-    rxRuntimeConfig->rcReadRawFn = rxSpiReadRawRC;
-    rxRuntimeConfig->rcFrameStatusFn = rxSpiFrameStatus;
+    rxRuntimeState->rcReadRawFn = rxSpiReadRawRC;
+    rxRuntimeState->rcFrameStatusFn = rxSpiFrameStatus;
+    rxRuntimeState->rcProcessFrameFn = rxSpiProcessFrame;
 
     return ret;
 }

@@ -27,27 +27,25 @@
 
 #include "blackbox/blackbox.h"
 
-#include "cli/cli.h"
-
-#include "common/axis.h"
-#include "common/color.h"
-#include "common/maths.h"
-#include "common/printf.h"
-
-#include "config/config_eeprom.h"
-#include "config/feature.h"
+#include "build/build_config.h"
+#include "build/debug.h"
 
 #include "cms/cms.h"
 #include "cms/cms_types.h"
 
+#include "common/axis.h"
+#include "common/color.h"
+#include "common/maths.h"
+#include "common/printf_serial.h"
+
+#include "config/config_eeprom.h"
+#include "config/feature.h"
+
 #include "drivers/accgyro/accgyro.h"
-#include "drivers/camera_control.h"
-#include "drivers/compass/compass.h"
-#include "drivers/pwm_esc_detect.h"
-#include "drivers/pwm_output.h"
 #include "drivers/adc.h"
 #include "drivers/bus.h"
 #include "drivers/bus_i2c.h"
+#include "drivers/bus_quadspi.h"
 #include "drivers/bus_spi.h"
 #include "drivers/buttons.h"
 #include "drivers/camera_control.h"
@@ -61,6 +59,7 @@
 #include "drivers/mco.h"
 #include "drivers/nvic.h"
 #include "drivers/persistent.h"
+#include "drivers/pin_pull_up_down.h"
 #include "drivers/pwm_esc_detect.h"
 #include "drivers/pwm_output.h"
 #include "drivers/rx/rx_pwm.h"
@@ -69,28 +68,61 @@
 #include "drivers/serial_softserial.h"
 #include "drivers/serial_uart.h"
 #include "drivers/sdcard.h"
+#include "drivers/sdio.h"
 #include "drivers/sound_beeper.h"
 #include "drivers/system.h"
 #include "drivers/time.h"
 #include "drivers/timer.h"
 #include "drivers/transponder_ir.h"
-#include "drivers/exti.h"
 #include "drivers/usb_io.h"
-#include "drivers/vtx_rtc6705.h"
-#include "drivers/vtx_common.h"
-#include "drivers/vtx_table.h"
 #ifdef USE_USB_MSC
 #include "drivers/usb_msc.h"
 #endif
+#include "drivers/vtx_common.h"
+#include "drivers/vtx_rtc6705.h"
+#include "drivers/vtx_table.h"
 
 #include "fc/board_info.h"
-#include "fc/config.h"
+#include "config/config.h"
+#include "fc/dispatch.h"
 #include "fc/init.h"
-#include "fc/tasks.h"
 #include "fc/rc_controls.h"
 #include "fc/runtime_config.h"
-#include "fc/dispatch.h"
+#include "fc/stats.h"
+#include "fc/tasks.h"
 
+#include "flight/failsafe.h"
+#include "flight/imu.h"
+#include "flight/mixer.h"
+#include "flight/pid.h"
+#include "flight/rpm_filter.h"
+#include "flight/servos.h"
+
+#include "io/asyncfatfs/asyncfatfs.h"
+#include "io/beeper.h"
+#include "io/dashboard.h"
+#include "io/displayport_frsky_osd.h"
+#include "io/displayport_max7456.h"
+#include "io/displayport_msp.h"
+#include "io/displayport_srxl.h"
+#include "io/flashfs.h"
+#include "io/gimbal.h"
+#include "io/gps.h"
+#include "io/ledstrip.h"
+#include "io/motors.h"
+#include "io/pidaudio.h"
+#include "io/piniobox.h"
+#include "io/rcdevice_cam.h"
+#include "io/serial.h"
+#include "io/servos.h"
+#include "io/transponder_ir.h"
+#include "io/vtx.h"
+#include "io/vtx_control.h"
+#include "io/vtx_rtc6705.h"
+#include "io/vtx_smartaudio.h"
+#include "io/vtx_tramp.h"
+
+#include "msc/emfat_file.h"
 #ifdef USE_PERSISTENT_MSC_RTC
 #include "msc/usbd_storage.h"
 #endif
@@ -98,49 +130,30 @@
 #include "msp/msp.h"
 #include "msp/msp_serial.h"
 
+#include "osd/osd.h"
+
 #include "pg/adc.h"
 #include "pg/beeper.h"
 #include "pg/beeper_dev.h"
 #include "pg/bus_i2c.h"
 #include "pg/bus_spi.h"
+#include "pg/bus_quadspi.h"
 #include "pg/flash.h"
 #include "pg/mco.h"
+#include "pg/motor.h"
 #include "pg/pinio.h"
 #include "pg/piniobox.h"
+#include "pg/pin_pull_up_down.h"
 #include "pg/pg.h"
 #include "pg/rx.h"
-#include "pg/rx_spi.h"
 #include "pg/rx_pwm.h"
+#include "pg/rx_spi.h"
 #include "pg/sdcard.h"
 #include "pg/vcd.h"
+#include "pg/vtx_io.h"
 
 #include "rx/rx.h"
-#include "rx/rx_spi.h"
 #include "rx/spektrum.h"
-
-#include "io/beeper.h"
-#include "io/displayport_max7456.h"
-#include "io/displayport_srxl.h"
-#include "io/serial.h"
-#include "io/flashfs.h"
-#include "io/gps.h"
-#include "io/motors.h"
-#include "io/servos.h"
-#include "io/gimbal.h"
-#include "io/ledstrip.h"
-#include "io/dashboard.h"
-#include "io/asyncfatfs/asyncfatfs.h"
-#include "io/transponder_ir.h"
-#include "io/pidaudio.h"
-#include "io/piniobox.h"
-#include "io/displayport_msp.h"
-#include "io/vtx.h"
-#include "io/vtx_rtc6705.h"
-#include "io/vtx_control.h"
-#include "io/vtx_smartaudio.h"
-#include "io/vtx_tramp.h"
-
-#include "osd/osd.h"
 
 #include "scheduler/scheduler.h"
 
@@ -152,25 +165,12 @@
 #include "sensors/esc_sensor.h"
 #include "sensors/gyro.h"
 #include "sensors/initialisation.h"
-#include "sensors/rpm_filter.h"
-#include "sensors/sensors.h"
 
 #include "telemetry/telemetry.h"
-
-#include "flight/failsafe.h"
-#include "flight/imu.h"
-#include "flight/mixer.h"
-#include "flight/pid.h"
-#include "flight/servos.h"
-
-#include "io/rcdevice_cam.h"
 
 #ifdef USE_HARDWARE_REVISION_DETECTION
 #include "hardware_revision.h"
 #endif
-
-#include "build/build_config.h"
-#include "build/debug.h"
 
 #ifdef TARGET_PREINIT
 void targetPreInit(void);
@@ -209,60 +209,94 @@ static IO_t busSwitchResetPin        = IO_NONE;
 }
 #endif
 
-#ifdef USE_DSHOT_TELEMETRY
-void activateDshotTelemetry(struct dispatchEntry_s* self)
+bool requiresSpiLeadingEdge(SPIDevice device)
 {
-    if (!ARMING_FLAG(ARMED) && !isDshotTelemetryActive()) {
-        pwmWriteDshotCommand(ALL_MOTORS, getMotorCount(), DSHOT_CMD_SIGNAL_LINE_CONTINUOUS_ERPM_TELEMETRY, false);
-        dispatchAdd(self, 1e6); // check again in 1 second
+#if defined(CONFIG_IN_SDCARD) || defined(CONFIG_IN_EXTERNAL_FLASH)
+#if !defined(SDCARD_SPI_INSTANCE) && !defined(RX_SPI_INSTANCE)
+    UNUSED(device);
+#endif
+#if defined(SDCARD_SPI_INSTANCE)
+    if (device == spiDeviceByInstance(SDCARD_SPI_INSTANCE)) {
+        return true;
     }
+#endif
+#if defined(RX_SPI_INSTANCE)
+    if (device == spiDeviceByInstance(RX_SPI_INSTANCE)) {
+        return true;
+    }
+#endif
+#else
+#if !defined(USE_SDCARD) && !defined(USE_RX_SPI)
+    UNUSED(device);
+#endif
+#if defined(USE_SDCARD)
+    if (device == SPI_CFG_TO_DEV(sdcardConfig()->device)) {
+        return true;
+    }
+#endif
+#if defined(USE_RX_SPI)
+    if (device == SPI_CFG_TO_DEV(rxSpiConfig()->spibus)) {
+        return true;
+    }
+#endif
+#endif // CONFIG_IN_SDCARD || CONFIG_IN_EXTERNAL_FLASH
+
+    return false;
 }
 
-dispatchEntry_t activateDshotTelemetryEntry =
+static void configureSPIAndQuadSPI(void)
 {
-    activateDshotTelemetry, 0, NULL, false
-};
+#ifdef USE_SPI
+    spiPinConfigure(spiPinConfig(0));
+#endif
+
+    sensorsPreInit();
+
+#ifdef USE_SPI
+    spiPreinit();
+
+#ifdef USE_SPI_DEVICE_1
+    spiInit(SPIDEV_1, requiresSpiLeadingEdge(SPIDEV_1));
+#endif
+#ifdef USE_SPI_DEVICE_2
+    spiInit(SPIDEV_2, requiresSpiLeadingEdge(SPIDEV_2));
+#endif
+#ifdef USE_SPI_DEVICE_3
+    spiInit(SPIDEV_3, requiresSpiLeadingEdge(SPIDEV_3));
+#endif
+#ifdef USE_SPI_DEVICE_4
+    spiInit(SPIDEV_4, requiresSpiLeadingEdge(SPIDEV_4));
+#endif
+#ifdef USE_SPI_DEVICE_5
+    spiInit(SPIDEV_5, requiresSpiLeadingEdge(SPIDEV_5));
+#endif
+#ifdef USE_SPI_DEVICE_6
+    spiInit(SPIDEV_6, requiresSpiLeadingEdge(SPIDEV_6));
+#endif
+#endif // USE_SPI
+
+#ifdef USE_QUADSPI
+    quadSpiPinConfigure(quadSpiConfig(0));
+
+#ifdef USE_QUADSPI_DEVICE_1
+    quadSpiInit(QUADSPIDEV_1);
+#endif
+#endif // USE_QUAD_SPI
+}
+
+#ifdef USE_SDCARD
+void sdCardAndFSInit()
+{
+    sdcard_init(sdcardConfig());
+    afatfs_init();
+}
 #endif
 
 void init(void)
 {
-#ifdef USE_ITCM_RAM
-    /* Load functions into ITCM RAM */
-    extern uint8_t tcm_code_start;
-    extern uint8_t tcm_code_end;
-    extern uint8_t tcm_code;
-    memcpy(&tcm_code_start, &tcm_code, (size_t) (&tcm_code_end - &tcm_code_start));
+#ifdef SERIAL_PORT_COUNT
+    printfSerialInit();
 #endif
-
-#ifdef USE_FAST_RAM
-    /* Load FAST_RAM variable intializers into DTCM RAM */
-    extern uint8_t _sfastram_data;
-    extern uint8_t _efastram_data;
-    extern uint8_t _sfastram_idata;
-    memcpy(&_sfastram_data, &_sfastram_idata, (size_t) (&_efastram_data - &_sfastram_data));
-#endif
-
-#ifdef USE_HAL_DRIVER
-    HAL_Init();
-#endif
-
-#if defined(STM32F7)   
-    /* Enable I-Cache */
-    if (INSTRUCTION_CACHE_ENABLE) {
-        SCB_EnableICache();
-    }
-
-    /* Enable D-Cache */
-    if (DATA_CACHE_ENABLE) {
-        SCB_EnableDCache();
-    }
-
-    if (PREFETCH_ENABLE) {
-        LL_FLASH_EnablePrefetch();
-    }
-#endif
-
-    printfSupportInit();
 
     systemInit();
 
@@ -283,6 +317,105 @@ void init(void)
     }
 #endif
 
+    enum {
+        FLASH_INIT_ATTEMPTED            = (1 << 0),
+        SD_INIT_ATTEMPTED               = (1 << 1),
+        SPI_AND_QSPI_INIT_ATTEMPTED      = (1 << 2),
+    };
+    uint8_t initFlags = 0;
+
+
+#ifdef CONFIG_IN_SDCARD
+
+    //
+    // Config in sdcard presents an issue with pin configuration since the pin and sdcard configs for the
+    // sdcard are in the config which is on the sdcard which we can't read yet!
+    //
+    // FIXME We need to add configuration somewhere, e.g. bootloader image or reserved flash area, that can be read by the firmware.
+    // it's currently possible for the firmware resource allocation to be wrong after the config is loaded if the user changes the settings.
+    // This would cause undefined behaviour once the config is loaded.  so for now, users must NOT change sdio/spi configs needed for
+    // the system to boot and/or to save the config.
+    //
+    // note that target specific SDCARD/SDIO/SPI/QUADSPI configs are
+    // also not supported in USE_TARGET_CONFIG/targetConfigure() when using CONFIG_IN_SDCARD.
+    //
+
+    //
+    // IMPORTANT: all default flash and pin configurations must be valid for the target after pgResetAll() is called.
+    // Target designers must ensure other devices connected the same SPI/QUADSPI interface as the flash chip do not
+    // cause communication issues with the flash chip.  e.g. use external pullups on SPI/QUADSPI CS lines.
+    //
+
+#ifdef TARGET_BUS_INIT
+#error "CONFIG_IN_SDCARD and TARGET_BUS_INIT are mutually exclusive"
+#endif
+
+    pgResetAll();
+
+#if defined(STM32H7) && defined(USE_SDCARD_SDIO) // H7 only for now, likely should be applied to F4/F7 too
+    sdioPinConfigure();
+    SDIO_GPIO_Init();
+#endif
+#ifdef USE_SDCARD_SPI
+    configureSPIAndQuadSPI();
+    initFlags |= SPI_AND_QSPI_INIT_ATTEMPTED;
+#endif
+
+    sdCardAndFSInit();
+    initFlags |= SD_INIT_ATTEMPTED;
+
+    while (afatfs_getFilesystemState() != AFATFS_FILESYSTEM_STATE_READY) {
+        afatfs_poll();
+
+        if (afatfs_getFilesystemState() == AFATFS_FILESYSTEM_STATE_FATAL) {
+            failureMode(FAILURE_SDCARD_INITIALISATION_FAILED);
+        }
+    }
+
+#endif // CONFIG_IN_SDCARD
+
+#ifdef CONFIG_IN_EXTERNAL_FLASH
+    //
+    // Config on external flash presents an issue with pin configuration since the pin and flash configs for the
+    // external flash are in the config which is on a chip which we can't read yet!
+    //
+    // FIXME We need to add configuration somewhere, e.g. bootloader image or reserved flash area, that can be read by the firmware.
+    // it's currently possible for the firmware resource allocation to be wrong after the config is loaded if the user changes the settings.
+    // This would cause undefined behaviour once the config is loaded.  so for now, users must NOT change flash/pin configs needed for
+    // the system to boot and/or to save the config.
+    //
+    // note that target specific FLASH/SPI/QUADSPI configs are
+    // also not supported in USE_TARGET_CONFIG/targetConfigure() when using CONFIG_IN_EXTERNAL_FLASH.
+    //
+
+    //
+    // IMPORTANT: all default flash and pin configurations must be valid for the target after pgResetAll() is called.
+    // Target designers must ensure other devices connected the same SPI/QUADSPI interface as the flash chip do not
+    // cause communication issues with the flash chip.  e.g. use external pullups on SPI/QUADSPI CS lines.
+    //
+    pgResetAll();
+
+#ifdef TARGET_BUS_INIT
+#error "CONFIG_IN_EXTERNAL_FLASH and TARGET_BUS_INIT are mutually exclusive"
+#endif
+
+    configureSPIAndQuadSPI();
+    initFlags |= SPI_AND_QSPI_INIT_ATTEMPTED;
+
+
+#ifndef USE_FLASH_CHIP
+#error "CONFIG_IN_EXTERNAL_FLASH requires USE_FLASH_CHIP to be defined."
+#endif
+
+    bool haveFlash = flashInit(flashConfig());
+
+    if (!haveFlash) {
+        failureMode(FAILURE_EXTERNAL_FLASH_INIT_FAILED);
+    }
+    initFlags |= FLASH_INIT_ATTEMPTED;
+
+#endif // CONFIG_IN_EXTERNAL_FLASH
+
     initEEPROM();
 
     ensureEEPROMStructureIsValid();
@@ -294,7 +427,7 @@ void init(void)
 #endif
 
     if (!readSuccess || !isEEPROMVersionValid() || strncasecmp(systemConfig()->boardIdentifier, TARGET_BOARD_IDENTIFIER, sizeof(TARGET_BOARD_IDENTIFIER))) {
-        resetEEPROM();
+        resetEEPROM(false);
     }
 
     systemState |= SYSTEM_STATE_CONFIG_LOADED;
@@ -307,8 +440,6 @@ void init(void)
         detectBrushedESC(configuredMotorIoTag);
     }
 #endif
-
-    //i2cSetOverclock(masterConfig.i2c_overclock);
 
     debugMode = systemConfig()->debug_mode;
 
@@ -331,7 +462,14 @@ void init(void)
 
     delayMicroseconds(10);  // allow configuration to settle // XXX Could be removed, too?
 
-    if (!isMPUSoftReset()) {
+    // Allow EEPROM reset with two-button-press without power cycling in DEBUG build
+#ifdef DEBUG
+#define EEPROM_RESET_PRECONDITION true
+#else
+#define EEPROM_RESET_PRECONDITION (!isMPUSoftReset())
+#endif
+
+    if (EEPROM_RESET_PRECONDITION) {
 #if defined(BUTTON_A_PIN) && defined(BUTTON_B_PIN)
         // two buttons required
         uint8_t secondsRemaining = 5;
@@ -340,7 +478,10 @@ void init(void)
             bothButtonsHeld = buttonAPressed() && buttonBPressed();
             if (bothButtonsHeld) {
                 if (--secondsRemaining == 0) {
-                    resetEEPROM();
+                    resetEEPROM(false);
+#ifdef USE_PERSISTENT_OBJECTS
+                    persistentObjectWrite(PERSISTENT_OBJECT_RESET_REASON, RESET_NONE);
+#endif
                     systemReset();
                 }
                 delay(1000);
@@ -349,7 +490,10 @@ void init(void)
         } while (bothButtonsHeld);
 #endif
     }
-#endif
+
+#undef EEPROM_RESET_PRECONDITION
+
+#endif // USE_BUTTONS
 
     // Note that spektrumBind checks if a call is immediately after
     // hard reset (including power cycle), so it should be called before
@@ -386,7 +530,9 @@ void init(void)
     mcoInit(mcoConfig());
 #endif
 
+#ifdef USE_TIMER
     timerInit();  // timer must be initialized before any channel is allocated
+#endif
 
 #ifdef BUS_SWITCH_PIN
     busSwitchInit();
@@ -419,11 +565,15 @@ void init(void)
     if (motorConfig()->dev.motorPwmProtocol == PWM_TYPE_BRUSHED) {
         idlePulse = 0; // brushed motors
     }
+#ifdef USE_MOTOR
     /* Motors needs to be initialized soon as posible because hardware initialization
      * may send spurious pulses to esc's causing their early initialization. Also ppm
      * receiver may share timer with motors so motors MUST be initialized here. */
     motorDevInit(&motorConfig()->dev, idlePulse, getMotorCount());
     systemState |= SYSTEM_STATE_MOTORS_READY;
+#else
+    UNUSED(idlePulse);
+#endif
 
     if (0) {}
 #if defined(USE_PPM)
@@ -445,39 +595,33 @@ void init(void)
     initInverters(serialPinConfig());
 #endif
 
+
 #ifdef TARGET_BUS_INIT
     targetBusInit();
 
 #else
 
-#ifdef USE_SPI
-    spiPinConfigure(spiPinConfig(0));
-#endif
-
-    sensorsPreInit();
-
-#ifdef USE_SPI
-    spiPreinit();
-
-#ifdef USE_SPI_DEVICE_1
-    spiInit(SPIDEV_1);
-#endif
-#ifdef USE_SPI_DEVICE_2
-    spiInit(SPIDEV_2);
-#endif
-#ifdef USE_SPI_DEVICE_3
-    spiInit(SPIDEV_3);
-#endif
-#ifdef USE_SPI_DEVICE_4
-    spiInit(SPIDEV_4);
-#endif
-#endif // USE_SPI
+    // Depending on compilation options SPI/QSPI initialisation may already be done.
+    if (!(initFlags & SPI_AND_QSPI_INIT_ATTEMPTED)) {
+        configureSPIAndQuadSPI();
+        initFlags |= SPI_AND_QSPI_INIT_ATTEMPTED;
+    }
 
 #ifdef USE_USB_MSC
 /* MSC mode will start after init, but will not allow scheduler to run,
  *  so there is no bottleneck in reading and writing data */
     mscInit();
     if (mscCheckBoot() || mscCheckButton()) {
+        ledInit(statusLedConfig());
+
+#if defined(USE_FLASHFS)
+        // If the blackbox device is onboard flash, then initialize and scan
+        // it to identify the log files *before* starting the USB device to
+        // prevent timeouts of the mass storage device.
+        if (blackboxConfig()->device == BLACKBOX_DEVICE_FLASH) {
+            emfat_init_files();
+        }
+#endif
         if (mscStart() == 0) {
              mscWaitForButton();
         } else {
@@ -518,8 +662,16 @@ void init(void)
     updateHardwareRevision();
 #endif
 
+#if defined(STM32H7) && defined(USE_SDCARD_SDIO) // H7 only for now, likely should be applied to F4/F7 too
+    if (!(initFlags & SD_INIT_ATTEMPTED)) {
+        sdioPinConfigure();
+        SDIO_GPIO_Init();
+    }
+#endif
+
+
 #ifdef USE_VTX_RTC6705
-    rtc6705IOInit();
+    bool useRTC6705 = rtc6705IOInit(vtxIOConfig());
 #endif
 
 #ifdef USE_CAMERA_CONTROL
@@ -541,14 +693,6 @@ void init(void)
 #endif
 
 #ifdef USE_ADC
-    adcConfigMutable()->vbat.enabled = (batteryConfig()->voltageMeterSource == VOLTAGE_METER_ADC);
-    adcConfigMutable()->current.enabled = (batteryConfig()->currentMeterSource == CURRENT_METER_ADC);
-
-    // The FrSky D SPI RX sends RSSI_ADC_PIN (if configured) as A2
-    adcConfigMutable()->rssi.enabled = featureIsEnabled(FEATURE_RSSI_ADC);
-#ifdef USE_RX_SPI
-    adcConfigMutable()->rssi.enabled |= (featureIsEnabled(FEATURE_RX_SPI) && rxSpiConfig()->rx_spi_protocol == RX_SPI_FRSKY_D);
-#endif
     adcInit(adcConfig());
 #endif
 
@@ -556,7 +700,11 @@ void init(void)
 
     if (!sensorsAutodetect()) {
         // if gyro was not detected due to whatever reason, notify and don't arm.
-        if (isSystemConfigured()) {
+        if (true
+#if defined(USE_UNIFIED_TARGET)
+            && isSystemConfigured()
+#endif
+            ) {
             indicateFailure(FAILURE_MISSING_ACC, 2);
         }
         setArmingDisabled(ARMING_DISABLED_NO_GYRO);
@@ -590,6 +738,10 @@ void init(void)
     pinioInit(pinioConfig());
 #endif
 
+#ifdef USE_PIN_PULL_UP_DOWN
+    pinPullupPulldownInit();
+#endif
+
 #ifdef USE_PINIOBOX
     pinioBoxInit(pinioBoxConfig());
 #endif
@@ -617,60 +769,9 @@ void init(void)
 
     imuInit();
 
-    mspInit();
-    mspSerialInit();
-
-#ifdef USE_CLI
-    cliInit(serialConfig());
-#endif
-
     failsafeInit();
 
     rxInit();
-
-/*
- * CMS, display devices and OSD
- */
-#ifdef USE_CMS
-    cmsInit();
-#endif
-
-#if (defined(USE_OSD) || (defined(USE_MSP_DISPLAYPORT) && defined(USE_CMS)))
-    displayPort_t *osdDisplayPort = NULL;
-#endif
-
-#if defined(USE_OSD)
-    //The OSD need to be initialised after GYRO to avoid GYRO initialisation failure on some targets
-
-    if (featureIsEnabled(FEATURE_OSD)) {
-#if defined(USE_MAX7456)
-        // If there is a max7456 chip for the OSD then use it
-        osdDisplayPort = max7456DisplayPortInit(vcdProfile());
-#elif defined(USE_CMS) && defined(USE_MSP_DISPLAYPORT) && defined(USE_OSD_OVER_MSP_DISPLAYPORT) // OSD over MSP; not supported (yet)
-        osdDisplayPort = displayPortMspInit();
-#endif
-        // osdInit  will register with CMS by itself.
-        osdInit(osdDisplayPort);
-    }
-#endif
-
-#if defined(USE_CMS) && defined(USE_MSP_DISPLAYPORT)
-    // If BFOSD is not active, then register MSP_DISPLAYPORT as a CMS device.
-    if (!osdDisplayPort)
-        cmsDisplayPortRegister(displayPortMspInit());
-#endif
-
-#ifdef USE_DASHBOARD
-    // Dashbord will register with CMS by itself.
-    if (featureIsEnabled(FEATURE_DASHBOARD)) {
-        dashboardInit();
-    }
-#endif
-
-#if defined(USE_CMS) && defined(USE_SPEKTRUM_CMS_TELEMETRY) && defined(USE_TELEMETRY_SRXL)
-    // Register the srxl Textgen telemetry sensor as a displayport device
-    cmsDisplayPortRegister(displayPortSrxlInit());
-#endif
 
 #ifdef USE_GPS
     if (featureIsEnabled(FEATURE_GPS)) {
@@ -710,10 +811,13 @@ void init(void)
     }
 #endif
 
-#ifdef USE_FLASHFS
-#if defined(USE_FLASH_CHIP)
-    flashInit(flashConfig());
+#ifdef USE_FLASH_CHIP
+    if (!(initFlags & FLASH_INIT_ATTEMPTED)) {
+        flashInit(flashConfig());
+        initFlags |= FLASH_INIT_ATTEMPTED;
+    }
 #endif
+#ifdef USE_FLASHFS
     flashfsInit();
 #endif
 
@@ -721,11 +825,10 @@ void init(void)
 #ifdef USE_SDCARD
     if (blackboxConfig()->device == BLACKBOX_DEVICE_SDCARD) {
         if (sdcardConfig()->mode) {
-            sdcardInsertionDetectInit();
-            sdcard_init(sdcardConfig());
-            afatfs_init();
-        } else {
-            blackboxConfigMutable()->device = BLACKBOX_DEVICE_NONE;
+            if (!(initFlags & SD_INIT_ATTEMPTED)) {
+                initFlags |= SD_INIT_ATTEMPTED;
+                sdCardAndFSInit();
+            }
         }
     }
 #endif
@@ -734,15 +837,15 @@ void init(void)
 
 #ifdef USE_ACC
     if (mixerConfig()->mixerMode == MIXER_GIMBAL) {
-        accSetCalibrationCycles(CALIBRATING_ACC_CYCLES);
+        accStartCalibration();
     }
 #endif
     gyroStartCalibration(false);
 #ifdef USE_BARO
-    baroSetCalibrationCycles(CALIBRATING_BARO_CYCLES);
+    baroStartCalibration();
 #endif
 
-#ifdef USE_VTX_TABLE
+#if defined(USE_VTX_COMMON) || defined(USE_VTX_CONTROL)
     vtxTableInit();
 #endif
 
@@ -762,21 +865,18 @@ void init(void)
 #endif
 
 #ifdef USE_VTX_RTC6705
-#ifdef VTX_RTC6705_OPTIONAL
-    if (!vtxCommonDevice()) // external VTX takes precedence when configured.
-#endif
-    {
+    if (!vtxCommonDevice() && useRTC6705) { // external VTX takes precedence when configured.
         vtxRTC6705Init();
     }
 #endif
 
 #endif // VTX_CONTROL
 
+#ifdef USE_TIMER
     // start all timers
     // TODO - not implemented yet
     timerStart();
-
-    ENABLE_STATE(SMALL_ANGLE);
+#endif
 
 #ifdef SOFTSERIAL_LOOPBACK
     // FIXME this is a hack, perhaps add a FUNCTION_LOOPBACK to support it properly
@@ -804,19 +904,105 @@ void init(void)
     rcdeviceInit();
 #endif // USE_RCDEVICE
 
-    pwmEnableMotors();
+#ifdef USE_PERSISTENT_STATS
+    statsInit();
+#endif
 
-    setArmingDisabled(ARMING_DISABLED_BOOT_GRACE_TIME);
+    // Initialize MSP
+    mspInit();
+    mspSerialInit();
 
-#ifdef USE_DSHOT_TELEMETRY
-    if (motorConfig()->dev.useDshotTelemetry) {
-        dispatchEnable();
-        dispatchAdd(&activateDshotTelemetryEntry, 5000000);
+/*
+ * CMS, display devices and OSD
+ */
+#ifdef USE_CMS
+    cmsInit();
+#endif
+
+#if (defined(USE_OSD) || (defined(USE_MSP_DISPLAYPORT) && defined(USE_CMS)))
+    displayPort_t *osdDisplayPort = NULL;
+#endif
+
+#if defined(USE_OSD)
+    //The OSD need to be initialised after GYRO to avoid GYRO initialisation failure on some targets
+
+    if (featureIsEnabled(FEATURE_OSD)) {
+        osdDisplayPortDevice_e device = osdConfig()->displayPortDevice;
+
+        switch(device) {
+
+        case OSD_DISPLAYPORT_DEVICE_AUTO:
+            FALLTHROUGH;
+
+#if defined(USE_FRSKYOSD)
+        // Test OSD_DISPLAYPORT_DEVICE_FRSKYOSD first, since an FC could
+        // have a builtin MAX7456 but also an FRSKYOSD connected to an
+        // uart.
+        case OSD_DISPLAYPORT_DEVICE_FRSKYOSD:
+            osdDisplayPort = frskyOsdDisplayPortInit(vcdProfile()->video_system);
+            if (osdDisplayPort || device == OSD_DISPLAYPORT_DEVICE_FRSKYOSD) {
+                break;
+            }
+            FALLTHROUGH;
+#endif
+
+#if defined(USE_MAX7456)
+        case OSD_DISPLAYPORT_DEVICE_MAX7456:
+            // If there is a max7456 chip for the OSD configured and detectd then use it.
+            osdDisplayPort = max7456DisplayPortInit(vcdProfile());
+            if (osdDisplayPort || device == OSD_DISPLAYPORT_DEVICE_MAX7456) {
+                break;
+            }
+            FALLTHROUGH;
+#endif
+
+#if defined(USE_CMS) && defined(USE_MSP_DISPLAYPORT) && defined(USE_OSD_OVER_MSP_DISPLAYPORT)
+        case OSD_DISPLAYPORT_DEVICE_MSP:
+            osdDisplayPort = displayPortMspInit();
+            if (osdDisplayPort || device == OSD_DISPLAYPORT_DEVICE_MSP) {
+                break;
+            }
+            FALLTHROUGH;
+#endif
+
+        // Other device cases can be added here
+
+        case OSD_DISPLAYPORT_DEVICE_NONE:
+        default:
+            break;
+        }
+
+        // osdInit will register with CMS by itself.
+        osdInit(osdDisplayPort);
+    }
+#endif // USE_OSD
+
+#if defined(USE_CMS) && defined(USE_MSP_DISPLAYPORT)
+    // If BFOSD is not active, then register MSP_DISPLAYPORT as a CMS device.
+    if (!osdDisplayPort)
+        cmsDisplayPortRegister(displayPortMspInit());
+#endif
+
+#ifdef USE_DASHBOARD
+    // Dashbord will register with CMS by itself.
+    if (featureIsEnabled(FEATURE_DASHBOARD)) {
+        dashboardInit();
     }
 #endif
 
-    fcTasksInit();
+#if defined(USE_CMS) && defined(USE_SPEKTRUM_CMS_TELEMETRY) && defined(USE_TELEMETRY_SRXL)
+    // Register the srxl Textgen telemetry sensor as a displayport device
+    cmsDisplayPortRegister(displayPortSrxlInit());
+#endif
+
+    setArmingDisabled(ARMING_DISABLED_BOOT_GRACE_TIME);
+
+#ifdef USE_MOTOR
+    motorPostInit();
+    motorEnable();
+#endif
+
+    tasksInit();
 
     systemState |= SYSTEM_STATE_READY;
-
 }

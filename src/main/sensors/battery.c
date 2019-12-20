@@ -20,6 +20,7 @@
 
 #include "stdbool.h"
 #include "stdint.h"
+#include "math.h"
 
 #include "platform.h"
 
@@ -29,17 +30,20 @@
 #include "common/maths.h"
 #include "common/utils.h"
 
+#include "config/config.h"
 #include "config/feature.h"
-#include "pg/pg.h"
-#include "pg/pg_ids.h"
 
 #include "drivers/adc.h"
 
 #include "fc/runtime_config.h"
-#include "fc/config.h"
 #include "fc/rc_controls.h"
 
+#include "flight/mixer.h"
+
 #include "io/beeper.h"
+
+#include "pg/pg.h"
+#include "pg/pg_ids.h"
 
 #include "sensors/battery.h"
 
@@ -116,6 +120,8 @@ PG_RESET_TEMPLATE(batteryConfig_t, batteryConfig,
 
     .vbatLpfPeriod = 30,
     .ibatLpfPeriod = 10,
+    .vbatDurationForWarning = 0,
+    .vbatDurationForCritical = 0,
 );
 
 void batteryUpdateVoltage(timeUs_t currentTimeUs)
@@ -228,24 +234,35 @@ void batteryUpdatePresence(void)
 static void batteryUpdateVoltageState(void)
 {
     // alerts are currently used by beeper, osd and other subsystems
+    static uint32_t lastVoltageChangeMs;
     switch (voltageState) {
         case BATTERY_OK:
             if (voltageMeter.filtered <= (batteryWarningVoltage - batteryConfig()->vbathysteresis)) {
-                voltageState = BATTERY_WARNING;
+                if (cmp32(millis(), lastVoltageChangeMs) >= batteryConfig()->vbatDurationForWarning * 100) {
+                    voltageState = BATTERY_WARNING;
+                }
+            } else {
+                lastVoltageChangeMs = millis();
             }
             break;
 
         case BATTERY_WARNING:
             if (voltageMeter.filtered <= (batteryCriticalVoltage - batteryConfig()->vbathysteresis)) {
-                voltageState = BATTERY_CRITICAL;
-            } else if (voltageMeter.filtered > batteryWarningVoltage) {
-                voltageState = BATTERY_OK;
+                if (cmp32(millis(), lastVoltageChangeMs) >= batteryConfig()->vbatDurationForCritical * 100) {
+                    voltageState = BATTERY_CRITICAL;
+                }
+            } else {
+                if (voltageMeter.filtered > batteryWarningVoltage) {
+                    voltageState = BATTERY_OK;
+                }
+                lastVoltageChangeMs = millis();
             }
             break;
 
         case BATTERY_CRITICAL:
             if (voltageMeter.filtered > batteryCriticalVoltage) {
                 voltageState = BATTERY_WARNING;
+                lastVoltageChangeMs = millis();
             }
             break;
 
@@ -414,7 +431,7 @@ void batteryUpdateCurrentMeter(timeUs_t currentTimeUs)
 #ifdef USE_VIRTUAL_CURRENT_METER
             throttleStatus_e throttleStatus = calculateThrottleStatus();
             bool throttleLowAndMotorStop = (throttleStatus == THROTTLE_LOW && featureIsEnabled(FEATURE_MOTOR_STOP));
-            int32_t throttleOffset = (int32_t)rcCommand[THROTTLE] - 1000;
+            const int32_t throttleOffset = lrintf(mixerGetThrottle() * 1000);
 
             currentMeterVirtualRefresh(lastUpdateAt, ARMING_FLAG(ARMED), throttleLowAndMotorStop, throttleOffset);
             currentMeterVirtualRead(&currentMeter);

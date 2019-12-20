@@ -54,13 +54,13 @@ typedef enum
     OME_MAX = OME_MENU
 } OSD_MenuElement;
 
-typedef long (*CMSEntryFuncPtr)(displayPort_t *displayPort, const void *ptr);
+typedef const void *(*CMSEntryFuncPtr)(displayPort_t *displayPort, const void *ptr);
 
 typedef struct
 {
     const char * const text;
     const OSD_MenuElement type;
-    const CMSEntryFuncPtr func;
+    CMSEntryFuncPtr func;
     void *data;
     const uint8_t flags;
 } __attribute__((packed)) OSD_Entry;
@@ -70,6 +70,7 @@ typedef struct
 #define PRINT_LABEL    0x02  // Text label should be printed
 #define DYNAMIC        0x04  // Value should be updated dynamically
 #define OPTSTRING      0x08  // (Temporary) Flag for OME_Submenu, indicating func should be called to get a string to display.
+#define REBOOT_REQUIRED 0x10 // Reboot is required if the value is changed
 
 #define IS_PRINTVALUE(x) ((x) & PRINT_VALUE)
 #define SET_PRINTVALUE(x) do { (x) |= PRINT_VALUE; } while (0)
@@ -81,10 +82,11 @@ typedef struct
 
 #define IS_DYNAMIC(p) ((p)->flags & DYNAMIC)
 
-typedef long (*CMSMenuFuncPtr)(void);
+typedef const void *(*CMSMenuFuncPtr)(void);
 
 // Special return value(s) for function chaining by CMSMenuFuncPtr
-#define MENU_CHAIN_BACK  (-1) // Causes automatic cmsMenuBack
+extern int menuChainBack;
+#define MENU_CHAIN_BACK  (&menuChainBack) // Causes automatic cmsMenuBack
 
 /*
 onExit function is called with self:
@@ -93,7 +95,11 @@ onExit function is called with self:
 (2) NULL if called from menu exit (forced exit at top level).
 */
 
-typedef long (*CMSMenuOnExitPtr)(const OSD_Entry *self);
+typedef const void *(*CMSMenuOnExitPtr)(const OSD_Entry *self);
+
+typedef const void * (*CMSMenuCheckRedirectPtr)(void);
+
+typedef const void *(*CMSMenuOnDisplayUpdatePtr)(const OSD_Entry *selected);
 
 typedef struct
 {
@@ -104,6 +110,7 @@ typedef struct
 #endif
     const CMSMenuFuncPtr onEnter;
     const CMSMenuOnExitPtr onExit;
+    const CMSMenuOnDisplayUpdatePtr onDisplayUpdate;
     const OSD_Entry *entries;
 } CMS_Menu;
 
@@ -159,7 +166,3 @@ typedef struct
 {
     char *val;
 } OSD_String_t;
-
-// This is a function used in the func member if the type is OME_Submenu.
-
-typedef char * (*CMSMenuOptFuncPtr)(void);

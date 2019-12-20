@@ -36,7 +36,7 @@
 
 #include "config/feature.h"
 
-#include "fc/config.h"
+#include "config/config.h"
 
 #include "io/ledstrip.h"
 
@@ -65,7 +65,7 @@ const char * const ledProfileNames[LED_PROFILE_COUNT] = {
 #endif
 };
 
-static long cmsx_Ledstrip_OnEnter(void)
+static const void *cmsx_Ledstrip_OnEnter(void)
 {
     cmsx_FeatureLedstrip = featureIsEnabled(FEATURE_LED_STRIP) ? 1 : 0;
     cmsx_ledProfile = getLedProfile();
@@ -77,19 +77,19 @@ static long cmsx_Ledstrip_OnEnter(void)
     cmsx_ledVisualBeeper = ledStripConfig()->ledstrip_visual_beeper;
     cmsx_ledVisualBeeperColor = ledStripConfig()->ledstrip_visual_beeper_color;
 
-    return 0;
+    return NULL;
 }
 
-static long cmsx_Ledstrip_OnExit(const OSD_Entry *self)
+static const void *cmsx_Ledstrip_OnExit(const OSD_Entry *self)
 {
     UNUSED(self);
 
     if (cmsx_FeatureLedstrip) {
-        featureEnable(FEATURE_LED_STRIP);
+        featureEnableImmediate(FEATURE_LED_STRIP);
         ledStripEnable();
     } else {
         ledStripDisable();
-        featureDisable(FEATURE_LED_STRIP);
+        featureDisableImmediate(FEATURE_LED_STRIP);
     }
 
     setLedProfile(cmsx_ledProfile);
@@ -101,7 +101,7 @@ static long cmsx_Ledstrip_OnExit(const OSD_Entry *self)
     ledStripConfigMutable()->ledstrip_visual_beeper = cmsx_ledVisualBeeper;
     ledStripConfigMutable()->ledstrip_visual_beeper_color = cmsx_ledVisualBeeperColor;
 
-    return 0;
+    return NULL;
 }
 
 static const OSD_Entry cmsx_menuLedstripEntries[] =
@@ -127,6 +127,7 @@ CMS_Menu cmsx_menuLedstrip = {
 #endif
     .onEnter = cmsx_Ledstrip_OnEnter,
     .onExit = cmsx_Ledstrip_OnExit,
+    .onDisplayUpdate = NULL,
     .entries = cmsx_menuLedstripEntries
 };
 #endif // LED_STRIP

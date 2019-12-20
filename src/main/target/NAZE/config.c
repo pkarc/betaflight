@@ -30,12 +30,11 @@
 
 #include "drivers/io.h"
 
-#include "fc/config.h"
+#include "config/config.h"
 #include "fc/rc_controls.h"
 #include "fc/controlrate_profile.h"
 
 #include "flight/failsafe.h"
-#include "flight/mixer.h"
 #include "flight/pid.h"
 
 #include "pg/rx.h"
@@ -48,6 +47,7 @@
 
 #include "pg/beeper_dev.h"
 #include "pg/flash.h"
+#include "pg/motor.h"
 
 #include "hardware_revision.h"
 

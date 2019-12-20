@@ -36,11 +36,11 @@ extern "C" {
 
     #include "common/time.h"
 
-    #include "drivers/max7456_symbols.h"
+    #include "drivers/osd_symbols.h"
     #include "drivers/persistent.h"
     #include "drivers/serial.h"
 
-    #include "fc/config.h"
+    #include "config/config.h"
     #include "fc/core.h"
     #include "fc/rc_controls.h"
     #include "fc/rc_modes.h"
@@ -81,6 +81,7 @@ extern "C" {
     float motorOutputHigh = 2047;
     float motorOutputLow = 1000;
 
+    linkQualitySource_e linkQualitySource;
 
     acc_t acc;
     float accAverage[XYZ_AXIS_COUNT];
@@ -91,7 +92,8 @@ extern "C" {
     PG_REGISTER(pilotConfig_t, pilotConfig, PG_PILOT_CONFIG, 0);
     PG_REGISTER(gpsRescueConfig_t, gpsRescueConfig, PG_GPS_RESCUE, 0);
     PG_REGISTER(imuConfig_t, imuConfig, PG_IMU_CONFIG, 0);
-
+    PG_REGISTER(gpsConfig_t, gpsConfig, PG_GPS_CONFIG, 0);
+    
     timeUs_t simulationTime = 0;
     batteryState_e simulationBatteryState;
     uint8_t simulationBatteryCellCount;
@@ -172,8 +174,13 @@ bool isSomeStatEnabled(void) {
  * Performs a test of the OSD actions on disarming.
  * (reused throughout the test suite)
  */
-void doTestDisarm()
+void doTestDisarm(bool cleanup = false)
 {
+    if (cleanup) {
+        // Clean up the armed state without showing stats at the end of a test
+        osdConfigMutable()->enabled_stats = 0;
+    }
+
     // given
     // craft is disarmed after having been armed
     DISABLE_ARMING_FLAG(ARMED);
@@ -185,7 +192,14 @@ void doTestDisarm()
     // then
     // post flight statistics displayed
     if (isSomeStatEnabled()) {
-        displayPortTestBufferSubstring(2, 2, "  --- STATS ---");
+        unsigned enabledStats = osdConfigMutable()->enabled_stats;
+        unsigned count = 0;
+        while (enabledStats) {
+           count += enabledStats & 1;
+           enabledStats >>= 1;
+        }
+
+        displayPortTestBufferSubstring(2, 7 - count / 2, "  --- STATS ---");
     }
 }
 
@@ -236,6 +250,8 @@ TEST(OsdTest, TestInit)
 TEST(OsdTest, TestArm)
 {
     doTestArm();
+
+    doTestDisarm(true);
 }
 
 /*
@@ -269,6 +285,8 @@ TEST(OsdTest, TestDisarmWithImmediateRearm)
     doTestArm();
     doTestDisarm();
     doTestArm();
+
+    doTestDisarm(true);
 }
 
 /*
@@ -276,7 +294,7 @@ TEST(OsdTest, TestDisarmWithImmediateRearm)
  */
 TEST(OsdTest, TestDisarmWithDismissStats)
 {
-    // Craft is alread armed after previous test
+    doTestArm();
 
     doTestDisarm();
 
@@ -287,7 +305,6 @@ TEST(OsdTest, TestDisarmWithDismissStats)
     // when
     // sufficient OSD updates have been called
     osdRefresh(simulationTime);
-    osdRefresh(simulationTime);
 
     // then
     // post flight stats screen disappears
@@ -297,6 +314,59 @@ TEST(OsdTest, TestDisarmWithDismissStats)
     displayPortTestBufferIsEmpty();
 
     rcData[PITCH] = 1500;
+
+    doTestDisarm(true);
+}
+
+/*
+ * Tests the calculation of timing in statistics
+ */
+TEST(OsdTest, TestStatsTiming)
+{
+    // given
+    osdStatSetState(OSD_STAT_RTC_DATE_TIME, true);
+    osdStatSetState(OSD_STAT_TIMER_1, true);
+    osdStatSetState(OSD_STAT_TIMER_2, true);
+
+    // and
+    // this timer 1 configuration
+    osdConfigMutable()->timers[OSD_TIMER_1] = OSD_TIMER(OSD_TIMER_SRC_TOTAL_ARMED, OSD_TIMER_PREC_HUNDREDTHS, 0);
+
+    // and
+    // this timer 2 configuration
+    osdConfigMutable()->timers[OSD_TIMER_2] = OSD_TIMER(OSD_TIMER_SRC_LAST_ARMED, OSD_TIMER_PREC_SECOND, 0);
+
+    // and
+    // this RTC time
+    dateTime_t dateTime;
+    dateTime.year = 2017;
+    dateTime.month = 11;
+    dateTime.day = 19;
+    dateTime.hours = 10;
+    dateTime.minutes = 12;
+    dateTime.seconds = 0;
+    dateTime.millis = 0;
+    rtcSetDateTime(&dateTime);
+
+    // when
+    // the craft is armed
+    doTestArm();
+
+    // and
+    // these conditions occur during flight
+    simulationTime += 1e6;
+    osdRefresh(simulationTime);
+
+    // and
+    // the craft is disarmed
+    doTestDisarm();
+
+    // then
+    // statistics screen should display the following
+    int row = 7;
+    displayPortTestBufferSubstring(2, row++, "2017-11-19 10:12:");
+    displayPortTestBufferSubstring(2, row++, "TOTAL ARM         : 00:03.50");
+    displayPortTestBufferSubstring(2, row++, "LAST ARM          : 00:01");
 }
 
 /*
@@ -314,8 +384,6 @@ TEST(OsdTest, TestStatsImperial)
     osdStatSetState(OSD_STAT_MAX_ALTITUDE, true);
     osdStatSetState(OSD_STAT_BLACKBOX, false);
     osdStatSetState(OSD_STAT_END_BATTERY, true);
-    osdStatSetState(OSD_STAT_TIMER_1, true);
-    osdStatSetState(OSD_STAT_TIMER_2, true);
     osdStatSetState(OSD_STAT_RTC_DATE_TIME, true);
     osdStatSetState(OSD_STAT_MAX_DISTANCE, true);
     osdStatSetState(OSD_STAT_FLIGHT_DISTANCE, true);
@@ -329,28 +397,8 @@ TEST(OsdTest, TestStatsImperial)
     osdConfigMutable()->units = OSD_UNIT_IMPERIAL;
 
     // and
-    // this timer 1 configuration
-    osdConfigMutable()->timers[OSD_TIMER_1] = OSD_TIMER(OSD_TIMER_SRC_TOTAL_ARMED, OSD_TIMER_PREC_HUNDREDTHS, 0);
-
-    // and
-    // this timer 2 configuration
-    osdConfigMutable()->timers[OSD_TIMER_2] = OSD_TIMER(OSD_TIMER_SRC_LAST_ARMED, OSD_TIMER_PREC_SECOND, 0);
-
-    // and
     // a GPS fix is present
     stateFlags |= GPS_FIX | GPS_FIX_HOME;
-
-    // and
-    // this RTC time
-    dateTime_t dateTime;
-    dateTime.year = 2017;
-    dateTime.month = 11;
-    dateTime.day = 19;
-    dateTime.hours = 10;
-    dateTime.minutes = 12;
-    dateTime.seconds = 0;
-    dateTime.millis = 0;
-    rtcSetDateTime(&dateTime);
 
     // when
     // the craft is armed
@@ -391,10 +439,7 @@ TEST(OsdTest, TestStatsImperial)
 
     // then
     // statistics screen should display the following
-    int row = 3;
-    displayPortTestBufferSubstring(2, row++, "2017-11-19 10:12:");
-    displayPortTestBufferSubstring(2, row++, "TOTAL ARM         : 00:05.00");
-    displayPortTestBufferSubstring(2, row++, "LAST ARM          : 00:03");
+    int row = 6;
     displayPortTestBufferSubstring(2, row++, "MAX ALTITUDE      : 6.5%c", SYM_FT);
     displayPortTestBufferSubstring(2, row++, "MAX SPEED         : 17");
     displayPortTestBufferSubstring(2, row++, "MAX DISTANCE      : 328%c", SYM_FT);
@@ -432,6 +477,54 @@ TEST(OsdTest, TestStatsMetric)
     simulationAltitude = 200;
     simulationTime += 1e6;
     osdRefresh(simulationTime);
+
+    simulationBatteryVoltage = 1520;
+    simulationTime += 1e6;
+    osdRefresh(simulationTime);
+
+    // and
+    // the craft is disarmed
+    doTestDisarm();
+
+    // then
+    // statistics screen should display the following
+    int row = 6;
+    displayPortTestBufferSubstring(2, row++, "MAX ALTITUDE      : 2.0%c", SYM_M);
+    displayPortTestBufferSubstring(2, row++, "MAX SPEED         : 28");
+    displayPortTestBufferSubstring(2, row++, "MAX DISTANCE      : 100%c", SYM_M);
+    displayPortTestBufferSubstring(2, row++, "FLIGHT DISTANCE   : 100%c", SYM_M);
+    displayPortTestBufferSubstring(2, row++, "MIN BATTERY       : 14.70%c", SYM_VOLT);
+    displayPortTestBufferSubstring(2, row++, "END BATTERY       : 15.20%c", SYM_VOLT);
+    displayPortTestBufferSubstring(2, row++, "MIN RSSI          : 25%%");
+}
+
+/*
+ * Tests the calculation of statistics with metric unit output.
+ * (essentially an abridged version of the previous test
+ */
+TEST(OsdTest, TestStatsMetricDistanceUnits)
+{
+    // given
+    // using metric unit system
+    osdConfigMutable()->units = OSD_UNIT_METRIC;
+
+    // and
+    // default state values are set
+    setDefaultSimulationState();
+
+    // when
+    // the craft is armed
+    doTestArm();
+
+    // and
+    // these conditions occur during flight (simplified to less assignments than previous test)
+    rssi = 256;
+    gpsSol.groundSpeed = 800;
+    GPS_distanceToHome = 1150;
+    GPS_distanceFlownInCm = 1050000;
+    simulationBatteryVoltage = 1470;
+    simulationAltitude = 200;
+    simulationTime += 1e6;
     osdRefresh(simulationTime);
 
     simulationBatteryVoltage = 1520;
@@ -444,14 +537,11 @@ TEST(OsdTest, TestStatsMetric)
 
     // then
     // statistics screen should display the following
-    int row = 3;
-    displayPortTestBufferSubstring(2, row++, "2017-11-19 10:12:");
-    displayPortTestBufferSubstring(2, row++, "TOTAL ARM         : 00:07.50");
-    displayPortTestBufferSubstring(2, row++, "LAST ARM          : 00:02");
+    int row = 6;
     displayPortTestBufferSubstring(2, row++, "MAX ALTITUDE      : 2.0%c", SYM_M);
     displayPortTestBufferSubstring(2, row++, "MAX SPEED         : 28");
-    displayPortTestBufferSubstring(2, row++, "MAX DISTANCE      : 100%c", SYM_M);
-    displayPortTestBufferSubstring(2, row++, "FLIGHT DISTANCE   : 100%c", SYM_M);
+    displayPortTestBufferSubstring(2, row++, "MAX DISTANCE      : 1.15%c", SYM_KM);
+    displayPortTestBufferSubstring(2, row++, "FLIGHT DISTANCE   : 10.5%c", SYM_KM);
     displayPortTestBufferSubstring(2, row++, "MIN BATTERY       : 14.70%c", SYM_VOLT);
     displayPortTestBufferSubstring(2, row++, "END BATTERY       : 15.20%c", SYM_VOLT);
     displayPortTestBufferSubstring(2, row++, "MIN RSSI          : 25%%");
@@ -469,12 +559,12 @@ TEST(OsdTest, TestAlarms)
 
     // and
     // the following OSD elements are visible
-    osdConfigMutable()->item_pos[OSD_RSSI_VALUE]              = OSD_POS(8, 1)  | OSD_PROFILE_1_FLAG;
-    osdConfigMutable()->item_pos[OSD_MAIN_BATT_VOLTAGE]       = OSD_POS(12, 1) | OSD_PROFILE_1_FLAG;
-    osdConfigMutable()->item_pos[OSD_ITEM_TIMER_1]            = OSD_POS(20, 1) | OSD_PROFILE_1_FLAG;
-    osdConfigMutable()->item_pos[OSD_ITEM_TIMER_2]            = OSD_POS(1, 1)  | OSD_PROFILE_1_FLAG;
-    osdConfigMutable()->item_pos[OSD_REMAINING_TIME_ESTIMATE] = OSD_POS(1, 2) | OSD_PROFILE_1_FLAG;
-    osdConfigMutable()->item_pos[OSD_ALTITUDE]                = OSD_POS(23, 7) | OSD_PROFILE_1_FLAG;
+    osdElementConfigMutable()->item_pos[OSD_RSSI_VALUE]              = OSD_POS(8, 1)  | OSD_PROFILE_1_FLAG;
+    osdElementConfigMutable()->item_pos[OSD_MAIN_BATT_VOLTAGE]       = OSD_POS(12, 1) | OSD_PROFILE_1_FLAG;
+    osdElementConfigMutable()->item_pos[OSD_ITEM_TIMER_1]            = OSD_POS(20, 1) | OSD_PROFILE_1_FLAG;
+    osdElementConfigMutable()->item_pos[OSD_ITEM_TIMER_2]            = OSD_POS(1, 1)  | OSD_PROFILE_1_FLAG;
+    osdElementConfigMutable()->item_pos[OSD_REMAINING_TIME_ESTIMATE] = OSD_POS(1, 2) | OSD_PROFILE_1_FLAG;
+    osdElementConfigMutable()->item_pos[OSD_ALTITUDE]                = OSD_POS(23, 7) | OSD_PROFILE_1_FLAG;
 
     // and
     // this set of alarm values
@@ -517,10 +607,10 @@ TEST(OsdTest, TestAlarms)
         printf("%d\n", i);
 #endif
         displayPortTestBufferSubstring(8,  1, "%c99", SYM_RSSI);
-        displayPortTestBufferSubstring(12, 1, "%c16.80%c", SYM_BATT_FULL, SYM_VOLT);
+        displayPortTestBufferSubstring(12, 1, "%c16.8%c", SYM_BATT_FULL, SYM_VOLT);
         displayPortTestBufferSubstring(1,  1, "%c00:", SYM_FLY_M); // only test the minute part of the timer
         displayPortTestBufferSubstring(20, 1, "%c01:", SYM_ON_M); // only test the minute part of the timer
-        displayPortTestBufferSubstring(23, 7, "    .0%c", SYM_M);
+        displayPortTestBufferSubstring(23, 7, "%c0.0%c", SYM_ALTITUDE, SYM_M);
     }
 
     // when
@@ -546,14 +636,16 @@ TEST(OsdTest, TestAlarms)
 #endif
         if (i % 2 == 0) {
             displayPortTestBufferSubstring(8,  1, "%c12", SYM_RSSI);
-            displayPortTestBufferSubstring(12, 1, "%c13.50%c", SYM_MAIN_BATT, SYM_VOLT);
+            displayPortTestBufferSubstring(12, 1, "%c13.5%c", SYM_MAIN_BATT, SYM_VOLT);
             displayPortTestBufferSubstring(1,  1, "%c01:", SYM_FLY_M); // only test the minute part of the timer
             displayPortTestBufferSubstring(20, 1, "%c02:", SYM_ON_M); // only test the minute part of the timer
-            displayPortTestBufferSubstring(23, 7, " 120.0%c", SYM_M);
+            displayPortTestBufferSubstring(23, 7, "%c120.0%c", SYM_ALTITUDE, SYM_M);
         } else {
             displayPortTestBufferIsEmpty();
         }
     }
+
+    doTestDisarm(true);
 }
 
 /*
@@ -562,7 +654,7 @@ TEST(OsdTest, TestAlarms)
 TEST(OsdTest, TestElementRssi)
 {
     // given
-    osdConfigMutable()->item_pos[OSD_RSSI_VALUE] = OSD_POS(8, 1) | OSD_PROFILE_1_FLAG;
+    osdElementConfigMutable()->item_pos[OSD_RSSI_VALUE] = OSD_POS(8, 1) | OSD_PROFILE_1_FLAG;
     osdConfigMutable()->rssi_alarm = 0;
 
     osdAnalyzeActiveElements();
@@ -598,7 +690,7 @@ TEST(OsdTest, TestElementRssi)
 TEST(OsdTest, TestElementAmperage)
 {
     // given
-    osdConfigMutable()->item_pos[OSD_CURRENT_DRAW] = OSD_POS(1, 12) | OSD_PROFILE_1_FLAG;
+    osdElementConfigMutable()->item_pos[OSD_CURRENT_DRAW] = OSD_POS(1, 12) | OSD_PROFILE_1_FLAG;
 
     osdAnalyzeActiveElements();
 
@@ -633,7 +725,7 @@ TEST(OsdTest, TestElementAmperage)
 TEST(OsdTest, TestElementMahDrawn)
 {
     // given
-    osdConfigMutable()->item_pos[OSD_MAH_DRAWN] = OSD_POS(1, 11) | OSD_PROFILE_1_FLAG;
+    osdElementConfigMutable()->item_pos[OSD_MAH_DRAWN] = OSD_POS(1, 11) | OSD_PROFILE_1_FLAG;
 
     osdAnalyzeActiveElements();
 
@@ -684,7 +776,7 @@ TEST(OsdTest, TestElementMahDrawn)
 TEST(OsdTest, TestElementPower)
 {
     // given
-    osdConfigMutable()->item_pos[OSD_POWER] = OSD_POS(1, 10)  | OSD_PROFILE_1_FLAG;
+    osdElementConfigMutable()->item_pos[OSD_POWER] = OSD_POS(1, 10)  | OSD_PROFILE_1_FLAG;
 
     osdAnalyzeActiveElements();
 
@@ -748,7 +840,7 @@ TEST(OsdTest, TestElementPower)
 TEST(OsdTest, TestElementAltitude)
 {
     // given
-    osdConfigMutable()->item_pos[OSD_ALTITUDE] = OSD_POS(23, 7) | OSD_PROFILE_1_FLAG;
+    osdElementConfigMutable()->item_pos[OSD_ALTITUDE] = OSD_POS(23, 7) | OSD_PROFILE_1_FLAG;
 
     osdAnalyzeActiveElements();
 
@@ -762,7 +854,7 @@ TEST(OsdTest, TestElementAltitude)
     osdRefresh(simulationTime);
 
     // then
-    displayPortTestBufferSubstring(23, 7, "-       ");
+    displayPortTestBufferSubstring(23, 7, "%c-", SYM_ALTITUDE);
 
     // when
     sensorsSet(SENSOR_GPS);
@@ -770,7 +862,7 @@ TEST(OsdTest, TestElementAltitude)
     osdRefresh(simulationTime);
 
     // then
-    displayPortTestBufferSubstring(23, 7, "    .0%c", SYM_M);
+    displayPortTestBufferSubstring(23, 7, "%c0.0%c", SYM_ALTITUDE, SYM_M);
 
     // when
     simulationAltitude = 247;
@@ -778,7 +870,7 @@ TEST(OsdTest, TestElementAltitude)
     osdRefresh(simulationTime);
 
     // then
-    displayPortTestBufferSubstring(23, 7, "   2.4%c", SYM_M);
+    displayPortTestBufferSubstring(23, 7, "%c2.4%c", SYM_ALTITUDE, SYM_M);
 
     // when
     simulationAltitude = 4247;
@@ -786,7 +878,7 @@ TEST(OsdTest, TestElementAltitude)
     osdRefresh(simulationTime);
 
     // then
-    displayPortTestBufferSubstring(23, 7, "  42.4%c", SYM_M);
+    displayPortTestBufferSubstring(23, 7, "%c42.4%c", SYM_ALTITUDE, SYM_M);
 
     // when
     simulationAltitude = -247;
@@ -794,7 +886,7 @@ TEST(OsdTest, TestElementAltitude)
     osdRefresh(simulationTime);
 
     // then
-    displayPortTestBufferSubstring(23, 7, "  -2.4%c", SYM_M);
+    displayPortTestBufferSubstring(23, 7, "%c-2.4%c", SYM_ALTITUDE, SYM_M);
 
     // when
     simulationAltitude = -70;
@@ -802,7 +894,8 @@ TEST(OsdTest, TestElementAltitude)
     osdRefresh(simulationTime);
 
     // then
-    displayPortTestBufferSubstring(23, 7, "   -.7%c", SYM_M);
+    displayPortTestBufferSubstring(23, 7, "%c-0.7%c", SYM_ALTITUDE, SYM_M);
+
 }
 
 /*
@@ -811,7 +904,7 @@ TEST(OsdTest, TestElementAltitude)
 TEST(OsdTest, TestElementCoreTemperature)
 {
     // given
-    osdConfigMutable()->item_pos[OSD_CORE_TEMPERATURE] = OSD_POS(1, 8) | OSD_PROFILE_1_FLAG;
+    osdElementConfigMutable()->item_pos[OSD_CORE_TEMPERATURE] = OSD_POS(1, 8) | OSD_PROFILE_1_FLAG;
 
     osdAnalyzeActiveElements();
 
@@ -826,7 +919,7 @@ TEST(OsdTest, TestElementCoreTemperature)
     osdRefresh(simulationTime);
 
     // then
-    displayPortTestBufferSubstring(1, 8, "  0%c", SYM_C);
+    displayPortTestBufferSubstring(1, 8, "C%c  0%c", SYM_TEMPERATURE, SYM_C);
 
     // given
     simulationCoreTemperature = 33;
@@ -836,7 +929,7 @@ TEST(OsdTest, TestElementCoreTemperature)
     osdRefresh(simulationTime);
 
     // then
-    displayPortTestBufferSubstring(1, 8, " 33%c", SYM_C);
+    displayPortTestBufferSubstring(1, 8, "C%c 33%c", SYM_TEMPERATURE, SYM_C);
 
     // given
     osdConfigMutable()->units = OSD_UNIT_IMPERIAL;
@@ -846,7 +939,7 @@ TEST(OsdTest, TestElementCoreTemperature)
     osdRefresh(simulationTime);
 
     // then
-    displayPortTestBufferSubstring(1, 8, " 91%c", SYM_F);
+    displayPortTestBufferSubstring(1, 8, "C%c 91%c", SYM_TEMPERATURE, SYM_F);
 }
 
 /*
@@ -855,7 +948,7 @@ TEST(OsdTest, TestElementCoreTemperature)
 TEST(OsdTest, TestElementWarningsBattery)
 {
     // given
-    osdConfigMutable()->item_pos[OSD_WARNINGS] = OSD_POS(9, 10) | OSD_PROFILE_1_FLAG;
+    osdElementConfigMutable()->item_pos[OSD_WARNINGS] = OSD_POS(9, 10) | OSD_PROFILE_1_FLAG;
     osdConfigMutable()->enabledWarnings = 0;  // disable all warnings
     osdWarnSetState(OSD_WARNING_BATTERY_WARNING, true);
     osdWarnSetState(OSD_WARNING_BATTERY_CRITICAL, true);
@@ -871,6 +964,18 @@ TEST(OsdTest, TestElementWarningsBattery)
     simulationBatteryCellCount = 4;
 
     // and
+    // used battery
+    simulationBatteryVoltage = ((batteryConfig()->vbatmaxcellvoltage - 20) * simulationBatteryCellCount) - 1;
+    simulationBatteryState = BATTERY_OK;
+
+    // when
+    displayClearScreen(&testDisplayPort);
+    osdRefresh(simulationTime);
+
+    // then
+    displayPortTestBufferSubstring(9, 10, "BATT < FULL");
+
+    // given
     // full battery
     simulationBatteryVoltage = 1680;
     simulationBatteryState = BATTERY_OK;
@@ -905,18 +1010,6 @@ TEST(OsdTest, TestElementWarningsBattery)
 
     // then
     displayPortTestBufferSubstring(9, 10, " LAND NOW   ");
-
-    // given
-    // used battery
-    simulationBatteryVoltage = ((batteryConfig()->vbatmaxcellvoltage - 20) * simulationBatteryCellCount) - 1;
-    simulationBatteryState = BATTERY_OK;
-
-    // when
-    displayClearScreen(&testDisplayPort);
-    osdRefresh(simulationTime);
-
-    // then
-    displayPortTestBufferSubstring(9, 10, "BATT < FULL");
 
     // given
     // full battery
@@ -1070,7 +1163,7 @@ extern "C" {
         return simulationVerticalSpeed;
     }
 
-    unsigned int blackboxGetLogNumber() {
+    int32_t blackboxGetLogNumber() {
         return 0;
     }
 
@@ -1096,7 +1189,7 @@ extern "C" {
 
     uint8_t getRssiPercent(void) { return scaleRange(rssi, 0, RSSI_MAX_VALUE, 0, 100); }
 
-    uint8_t rxGetLinkQuality(void) { return LINK_QUALITY_MAX_VALUE; }
+    uint16_t rxGetLinkQuality(void) { return LINK_QUALITY_MAX_VALUE; }
 
     uint16_t getCoreTemperatureCelsius(void) { return simulationCoreTemperature; }
 
@@ -1111,4 +1204,5 @@ extern "C" {
     int8_t calculateThrottlePercent(void) { return 0; }
     uint32_t persistentObjectRead(persistentObjectId_e) { return 0; }
     void persistentObjectWrite(persistentObjectId_e, uint32_t) {}
+    bool isUpright(void) { return true; }
 }

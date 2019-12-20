@@ -22,7 +22,7 @@
 
 #define TARGET_BOARD_IDENTIFIER "IMF3"
 
-#define ENABLE_DSHOT_DMAR       true
+#define ENABLE_DSHOT_DMAR       DSHOT_DMAR_ON
 
 #define LED0_PIN                PB7
 
@@ -41,7 +41,6 @@
 
 #define USE_ACC
 #define USE_ACC_SPI_MPU6000
-#define ACC_1_ALIGN             CW0_DEG
 
 #define USE_FLASHFS
 #define USE_FLASH_M25P16

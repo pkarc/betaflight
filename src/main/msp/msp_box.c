@@ -30,7 +30,7 @@
 
 #include "config/feature.h"
 
-#include "fc/config.h"
+#include "config/config.h"
 #include "fc/runtime_config.h"
 
 #include "flight/mixer.h"
@@ -226,9 +226,11 @@ void initActiveBoxIds(void)
         BME(BOX3D);
     }
 
+#ifdef USE_DSHOT
     if (isMotorProtocolDshot()) {
         BME(BOXFLIPOVERAFTERCRASH);
     }
+#endif
 
     if (featureIsEnabled(FEATURE_SERVO_TILT)) {
         BME(BOXCAMSTAB);

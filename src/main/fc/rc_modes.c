@@ -35,7 +35,7 @@
 #include "pg/pg_ids.h"
 #include "pg/rx.h"
 
-#include "fc/config.h"
+#include "config/config.h"
 #include "fc/rc_controls.h"
 
 #include "rx/rx.h"
@@ -154,7 +154,7 @@ void updateActivatedModes(void)
         updateMasksForMac(mac, &andMask, &newMask, bActive);
     }
 
-    bitArrayXor(&newMask, sizeof(&newMask), &newMask, &andMask);
+    bitArrayXor(&newMask, sizeof(newMask), &newMask, &andMask);
 
     rcModeUpdate(&newMask);
 

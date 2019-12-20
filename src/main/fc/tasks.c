@@ -46,7 +46,7 @@
 #include "drivers/usb_io.h"
 #include "drivers/vtx_common.h"
 
-#include "fc/config.h"
+#include "config/config.h"
 #include "fc/core.h"
 #include "fc/rc.h"
 #include "fc/dispatch.h"
@@ -77,6 +77,7 @@
 #include "osd/osd.h"
 
 #include "pg/rx.h"
+#include "pg/motor.h"
 
 #include "rx/rx.h"
 
@@ -159,13 +160,18 @@ static void taskUpdateAccelerometer(timeUs_t currentTimeUs)
 
 static void taskUpdateRxMain(timeUs_t currentTimeUs)
 {
+    static timeUs_t lastRxTimeUs;
+
     if (!processRx(currentTimeUs)) {
         return;
     }
 
-    static timeUs_t lastRxTimeUs;
-    currentRxRefreshRate = constrain(currentTimeUs - lastRxTimeUs, 1000, 30000);
+    timeDelta_t rxFrameDeltaUs;
+    if (!rxGetFrameDelta(&rxFrameDeltaUs)) {
+        rxFrameDeltaUs = cmpTimeUs(currentTimeUs, lastRxTimeUs); // calculate a delta here if not supplied by the protocol
+    }
     lastRxTimeUs = currentTimeUs;
+    currentRxRefreshRate = constrain(rxFrameDeltaUs, 1000, 30000);
     isRXDataNew = true;
 
 #ifdef USE_USB_CDC_HID
@@ -222,7 +228,7 @@ static void taskCameraControl(uint32_t currentTime)
 }
 #endif
 
-void fcTasksInit(void)
+void tasksInit(void)
 {
     schedulerInit();
 
@@ -237,10 +243,6 @@ void fcTasksInit(void)
     setTaskEnabled(TASK_BATTERY_CURRENT, useBatteryCurrent);
     const bool useBatteryAlerts = batteryConfig()->useVBatAlerts || batteryConfig()->useConsumptionAlerts || featureIsEnabled(FEATURE_OSD);
     setTaskEnabled(TASK_BATTERY_ALERTS, (useBatteryVoltage || useBatteryCurrent) && useBatteryAlerts);
-
-#ifdef USE_TRANSPONDER
-    setTaskEnabled(TASK_TRANSPONDER, featureIsEnabled(FEATURE_TRANSPONDER));
-#endif
 
 #ifdef STACK_CHECK
     setTaskEnabled(TASK_STACK_CHECK, true);
@@ -296,10 +298,10 @@ void fcTasksInit(void)
 #ifdef USE_TELEMETRY
     if (featureIsEnabled(FEATURE_TELEMETRY)) {
         setTaskEnabled(TASK_TELEMETRY, true);
-        if (rxConfig()->serialrx_provider == SERIALRX_JETIEXBUS) {
+        if (rxRuntimeState.serialrxProvider == SERIALRX_JETIEXBUS) {
             // Reschedule telemetry to 500hz for Jeti Exbus
             rescheduleTask(TASK_TELEMETRY, TASK_PERIOD_HZ(500));
-        } else if (rxConfig()->serialrx_provider == SERIALRX_CRSF) {
+        } else if (rxRuntimeState.serialrxProvider == SERIALRX_CRSF) {
             // Reschedule telemetry to 500hz, 2ms for CRSF
             rescheduleTask(TASK_TELEMETRY, TASK_PERIOD_HZ(500));
         }

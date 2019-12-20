@@ -42,6 +42,9 @@
 
 #define USE_SPI
 
+#define ENABLE_DSHOT_DMAR       DSHOT_DMAR_AUTO
+#define DSHOT_BITBANG_DEFAULT   DSHOT_BITBANG_OFF
+
 // *************** SPI1 Gyro & ACC **********************
 #define USE_SPI_DEVICE_1
 #define SPI1_SCK_PIN            PA5
@@ -65,11 +68,6 @@
 #endif
 #define USE_ACC
 #define USE_ACC_SPI_MPU6000
-#if defined(CRAZYBEEF4FS) || defined(CRAZYBEEF4FR) || defined(CRAZYBEEF4DX)
-#define ACC_1_ALIGN            CW90_DEG
-#else
-#define ACC_1_ALIGN             CW180_DEG
-#endif
 // *************** SPI2 OSD *****************************
 #define USE_SPI_DEVICE_2
 #define SPI2_SCK_PIN            PB13
@@ -97,7 +95,7 @@
 #define USE_RX_SPI
 #define RX_SPI_INSTANCE         SPI3
 
-#define BINDPLUG_PIN            PB2
+#define RX_SPI_BIND_PIN         PB2
 
 #define DEFAULT_RX_FEATURE      FEATURE_RX_SPI
 
@@ -111,7 +109,6 @@
 #define RX_SPI_LED_PIN          PB9
 
 #elif defined(CRAZYBEEF4FR)
-#define RX_CC2500_SPI_DISABLE_CHIP_DETECTION
 #define RX_SPI_EXTI_PIN             PC14
 #define RX_SPI_LED_PIN              PB9
 #define USE_RX_FRSKY_SPI_D

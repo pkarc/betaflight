@@ -47,8 +47,9 @@ typedef enum {
 
 typedef enum {
     RX_SPI_RECEIVED_NONE = 0,
-    RX_SPI_RECEIVED_BIND,
-    RX_SPI_RECEIVED_DATA
+    RX_SPI_RECEIVED_BIND = (1 << 0),
+    RX_SPI_RECEIVED_DATA = (1 << 1),
+    RX_SPI_ROCESSING_REQUIRED = (1 << 2),
 } rx_spi_received_e;
 
 // RC channels in AETR order
@@ -81,4 +82,4 @@ typedef enum {
 #define RC_CHANNEL_HEADLESS    RC_SPI_AUX5
 #define RC_CHANNEL_RTH         RC_SPI_AUX6 // return to home
 
-bool rxSpiInit(const rxSpiConfig_t *rxSpiConfig, rxRuntimeConfig_t *rxRuntimeConfig);
+bool rxSpiInit(const rxSpiConfig_t *rxSpiConfig, rxRuntimeState_t *rxRuntimeState);

@@ -30,8 +30,6 @@
 
 #include "build/build_config.h"
 
-#include "cms/cms.h"
-
 #include "common/axis.h"
 #include "common/maths.h"
 
@@ -39,7 +37,7 @@
 
 #include "drivers/camera_control.h"
 
-#include "fc/config.h"
+#include "config/config.h"
 #include "fc/core.h"
 #include "fc/rc.h"
 #include "fc/runtime_config.h"
@@ -64,8 +62,8 @@
 #include "sensors/acceleration.h"
 #include "sensors/barometer.h"
 #include "sensors/battery.h"
+#include "sensors/compass.h"
 #include "sensors/gyro.h"
-#include "sensors/sensors.h"
 
 #include "rc_controls.h"
 
@@ -136,6 +134,7 @@ throttleStatus_e calculateThrottleStatus(void)
     rcDelayMs -= (t); \
     doNotRepeat = false; \
 }
+
 void processRcStickPositions()
 {
     // time the sticks are maintained
@@ -145,12 +144,6 @@ void processRcStickPositions()
     // an extra guard for disarming through switch to prevent that one frame can disarm it
     static uint8_t rcDisarmTicks;
     static bool doNotRepeat;
-
-#ifdef USE_CMS
-    if (cmsInMenu) {
-        return;
-    }
-#endif
 
     // checking sticks positions
     uint8_t stTmp = 0;
@@ -208,6 +201,7 @@ void processRcStickPositions()
                 // before they're able to rearm
                 unsetArmingDisabled(ARMING_DISABLED_RUNAWAY_TAKEOFF);
 #endif
+                unsetArmingDisabled(ARMING_DISABLED_CRASH_DETECTED);
             }
         }
         return;
@@ -230,7 +224,7 @@ void processRcStickPositions()
         resetTryingToArm();
     }
 
-    if (ARMING_FLAG(ARMED) || doNotRepeat || rcDelayMs <= STICK_DELAY_MS || (getArmingDisableFlags() & ARMING_DISABLED_RUNAWAY_TAKEOFF)) {
+    if (ARMING_FLAG(ARMED) || doNotRepeat || rcDelayMs <= STICK_DELAY_MS || (getArmingDisableFlags() & (ARMING_DISABLED_RUNAWAY_TAKEOFF | ARMING_DISABLED_CRASH_DETECTED))) {
         return;
     }
     doNotRepeat = true;
@@ -248,8 +242,9 @@ void processRcStickPositions()
 #endif
 
 #ifdef USE_BARO
-        if (sensors(SENSOR_BARO))
-            baroSetCalibrationCycles(10); // calibrate baro to new ground level (10 * 25 ms = ~250 ms non blocking)
+        if (sensors(SENSOR_BARO)) {
+            baroSetGroundLevel();
+        }
 #endif
 
         return;
@@ -284,16 +279,19 @@ void processRcStickPositions()
 #ifdef USE_ACC
     if (rcSticks == THR_HI + YAW_LO + PIT_LO + ROL_CE) {
         // Calibrating Acc
-        accSetCalibrationCycles(CALIBRATING_ACC_CYCLES);
+        accStartCalibration();
         return;
     }
 #endif
 
+#if defined(USE_MAG)
     if (rcSticks == THR_HI + YAW_HI + PIT_LO + ROL_CE) {
         // Calibrating Mag
-        ENABLE_STATE(CALIBRATE_MAG);
+        compassStartCalibration();
+
         return;
     }
+#endif
 
 
     if (FLIGHT_MODE(ANGLE_MODE|HORIZON_MODE)) {
@@ -402,5 +400,5 @@ int32_t getRcStickDeflection(int32_t axis, uint16_t midrc) {
 void rcControlsInit(void)
 {
     analyzeModeActivationConditions();
-    isUsingSticksToArm = !isModeActivationConditionPresent(BOXARM);
+    isUsingSticksToArm = !isModeActivationConditionPresent(BOXARM) && systemConfig()->enableStickArming;
 }

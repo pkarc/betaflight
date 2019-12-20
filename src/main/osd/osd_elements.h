@@ -31,11 +31,13 @@ typedef struct osdElementParms_s {
     char *buff;
     displayPort_t *osdDisplayPort;
     bool drawElement;
+    uint8_t attr;
 } osdElementParms_t;
 
 typedef void (*osdElementDrawFn)(osdElementParms_t *element);
 
 int osdConvertTemperatureToSelectedUnit(int tempInDegreesCelcius);
+void osdFormatDistanceString(char *result, int distance, char leadingSymbol);
 bool osdFormatRtcDateTime(char *buffer);
 void osdFormatTime(char * buff, osd_timer_precision_e precision, timeUs_t time);
 void osdFormatTimer(char *buff, bool showSymbol, bool usePrecision, int timerIndex);
@@ -44,7 +46,10 @@ char osdGetMetersToSelectedUnitSymbol(void);
 int32_t osdGetSpeedToSelectedUnit(int32_t value);
 char osdGetSpeedToSelectedUnitSymbol(void);
 char osdGetTemperatureSymbolForSelectedUnit(void);
-void osdAnalyzeActiveElements(void);
+void osdAddActiveElements(void);
 void osdDrawActiveElements(displayPort_t *osdDisplayPort, timeUs_t currentTimeUs);
+void osdDrawActiveElementsBackground(displayPort_t *osdDisplayPort);
+void osdElementsInit(bool backgroundLayerFlag);
 void osdResetAlarms(void);
 void osdUpdateAlarms(void);
+bool osdElementsNeedAccelerometer(void);

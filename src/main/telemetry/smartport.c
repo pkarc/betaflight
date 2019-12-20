@@ -44,7 +44,7 @@
 #include "drivers/sensor.h"
 #include "drivers/time.h"
 
-#include "fc/config.h"
+#include "config/config.h"
 #include "fc/controlrate_profile.h"
 #include "fc/rc_controls.h"
 #include "fc/runtime_config.h"
@@ -180,7 +180,7 @@ static frSkyTableInfo_t frSkyEscDataIdTableInfo = {frSkyEscDataIdTable, 0, 0};
 #define SMARTPORT_SERVICE_TIMEOUT_US 1000 // max allowed time to find a value to send
 
 static serialPort_t *smartPortSerialPort = NULL; // The 'SmartPort'(tm) Port.
-static serialPortConfig_t *portConfig;
+static const serialPortConfig_t *portConfig;
 
 static portSharing_e smartPortPortSharing;
 
@@ -207,7 +207,7 @@ static smartPortWriteFrameFn *smartPortWriteFrame;
 static bool smartPortMspReplyPending = false;
 #endif
 
-smartPortPayload_t *smartPortDataReceive(uint16_t c, bool *clearToSend, smartPortCheckQueueEmptyFn *checkQueueEmpty, bool useChecksum)
+smartPortPayload_t *smartPortDataReceive(uint16_t c, bool *clearToSend, smartPortReadyToSendFn *readyToSend, bool useChecksum)
 {
     static uint8_t rxBuffer[sizeof(smartPortPayload_t)];
     static uint8_t smartPortRxBytes = 0;
@@ -229,9 +229,10 @@ smartPortPayload_t *smartPortDataReceive(uint16_t c, bool *clearToSend, smartPor
 
     if (awaitingSensorId) {
         awaitingSensorId = false;
-        if ((c == FSSP_SENSOR_ID1) && checkQueueEmpty()) {
-            // our slot is starting, no need to decode more
+        if ((c == FSSP_SENSOR_ID1) && readyToSend()) {
+            // our slot is starting, start sending
             *clearToSend = true;
+            // no need to decode more
             skipUntilStart = true;
         } else if (c == FSSP_SENSOR_ID2) {
             checksum = 0;
@@ -263,7 +264,6 @@ smartPortPayload_t *smartPortDataReceive(uint16_t c, bool *clearToSend, smartPor
             checksum += c;
             checksum = (checksum & 0xFF) + (checksum >> 8);
             if (checksum == 0xFF) {
-
                 return (smartPortPayload_t *)&rxBuffer;
             }
         }
@@ -520,7 +520,7 @@ void processSmartPortTelemetry(smartPortPayload_t *payload, volatile bool *clear
         // Pass only the payload: skip frameId
         uint8_t *frameStart = (uint8_t *)&payload->valueId;
         smartPortMspReplyPending = handleMspFrame(frameStart, SMARTPORT_MSP_PAYLOAD_SIZE, &skipRequests);
-         
+
         // Don't send MSP response after write to eeprom
         // CPU just got out of suspended state after writeEEPROM()
         // We don't know if the receiver is listening again
@@ -762,8 +762,9 @@ void processSmartPortTelemetry(smartPortPayload_t *payload, volatile bool *clear
             case FSSP_DATAID_T2         :
 #ifdef USE_GPS
                 if (sensors(SENSOR_GPS)) {
-                    // provide GPS lock status
-                    smartPortSendPackage(id, (STATE(GPS_FIX) ? 1000 : 0) + (STATE(GPS_FIX_HOME) ? 2000 : 0) + gpsSol.numSat);
+                    // satellite accuracy HDOP: 0 = worst [HDOP > 5.5m], 9 = best [HDOP <= 1.0m]
+                    uint16_t hdop = constrain(scaleRange(gpsSol.hdop, 100, 550, 9, 0), 0, 9) * 100;
+                    smartPortSendPackage(id, (STATE(GPS_FIX) ? 1000 : 0) + (STATE(GPS_FIX_HOME) ? 2000 : 0) + hdop + gpsSol.numSat);
                     *clearToSend = false;
                 } else if (featureIsEnabled(FEATURE_GPS)) {
                     smartPortSendPackage(id, 0);
@@ -865,7 +866,7 @@ void processSmartPortTelemetry(smartPortPayload_t *payload, volatile bool *clear
     }
 }
 
-static bool serialCheckQueueEmpty(void)
+static bool serialReadyToSend(void)
 {
     return (serialRxBytesWaiting(smartPortSerialPort) == 0);
 }
@@ -879,7 +880,7 @@ void handleSmartPortTelemetry(void)
         bool clearToSend = false;
         while (serialRxBytesWaiting(smartPortSerialPort) > 0 && !payload) {
             uint8_t c = serialRead(smartPortSerialPort);
-            payload = smartPortDataReceive(c, &clearToSend, serialCheckQueueEmpty, true);
+            payload = smartPortDataReceive(c, &clearToSend, serialReadyToSend, true);
         }
 
             processSmartPortTelemetry(payload, &clearToSend, &requestTimeout);

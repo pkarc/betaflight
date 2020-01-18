@@ -33,11 +33,12 @@
 #include "config/feature.h"
 
 #include "drivers/adc.h"
-#include "drivers/rx/rx_cc2500.h"
 #include "drivers/io.h"
 #include "drivers/io_def.h"
 #include "drivers/io_types.h"
 #include "drivers/resource.h"
+#include "drivers/rx/rx_cc2500.h"
+#include "drivers/rx/rx_spi.h"
 #include "drivers/system.h"
 #include "drivers/time.h"
 
@@ -206,14 +207,15 @@ static void buildTelemetryFrame(uint8_t *packet)
     } else {
         uint8_t a1Value;
         switch (rxCc2500SpiConfig()->a1Source) {
-        case FRSKY_SPI_A1_SOURCE_VBAT:
-            a1Value = getLegacyBatteryVoltage() & 0x7f;
-            break;
         case FRSKY_SPI_A1_SOURCE_EXTADC:
             a1Value = (uint8_t)((adcGetChannel(ADC_EXTERNAL1) & 0xfe0) >> 5);
             break;
         case FRSKY_SPI_A1_SOURCE_CONST:
             a1Value = A1_CONST_X & 0x7f;
+            break;
+        case FRSKY_SPI_A1_SOURCE_VBAT:
+        default:
+            a1Value = getLegacyBatteryVoltage() & 0x7f;
             break;
         }
         frame[4] = a1Value;
@@ -368,7 +370,7 @@ rx_spi_received_e frSkyXHandlePacket(uint8_t * const packet, uint8_t * const pro
         FALLTHROUGH;
         // here FS code could be
     case STATE_DATA:
-        if (cc2500getGdo() && (frameReceived == false)){
+        if (rxSpiGetExtiState() && (frameReceived == false)){
             uint8_t ccLen = cc2500ReadReg(CC2500_3B_RXBYTES | CC2500_READ_BURST) & 0x7F;
             if (ccLen >= packetLength) {
                 cc2500ReadFifo(packet, packetLength);

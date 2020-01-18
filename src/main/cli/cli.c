@@ -2583,7 +2583,7 @@ static void cliVtx(char *cmdline)
             ptr = nextArg(ptr);
             if (ptr) {
                 val = atoi(ptr);
-                if (val >= 0 && val <= vtxTableBandCount) {
+                if (val >= 0 && val <= vtxTableConfig()->bands) {
                     cac->band = val;
                     validArgumentCount++;
                 }
@@ -2591,7 +2591,7 @@ static void cliVtx(char *cmdline)
             ptr = nextArg(ptr);
             if (ptr) {
                 val = atoi(ptr);
-                if (val >= 0 && val <= vtxTableChannelCount) {
+                if (val >= 0 && val <= vtxTableConfig()->channels) {
                     cac->channel = val;
                     validArgumentCount++;
                 }
@@ -2599,7 +2599,7 @@ static void cliVtx(char *cmdline)
             ptr = nextArg(ptr);
             if (ptr) {
                 val = atoi(ptr);
-                if (val >= 0 && val < vtxTablePowerLevels) {
+                if (val >= 0 && val <= vtxTableConfig()->powerLevels) {
                     cac->power= val;
                     validArgumentCount++;
                 }
@@ -4648,6 +4648,13 @@ static void cliStatus(char *cmdline)
     cliPrintLinefeed();
 #endif /* USE_SENSOR_NAMES */
 
+#if defined(USE_OSD)
+    osdDisplayPortDevice_e displayPortDevice;
+    osdGetDisplayPort(&displayPortDevice);
+
+    cliPrintLinef("OSD: %s", lookupTableOsdDisplayPortDevice[displayPortDevice]);
+#endif
+
     // Uptime and wall clock
 
     cliPrintf("System Uptime: %d seconds", millis() / 1000);
@@ -4807,13 +4814,13 @@ static void cliRcSmoothing(char *cmdline)
     cliPrint("# RC Smoothing Type: ");
     if (rxConfig()->rc_smoothing_type == RC_SMOOTHING_TYPE_FILTER) {
         cliPrintLine("FILTER");
-        uint16_t avgRxFrameMs = rcSmoothingData->averageFrameTimeUs;
         if (rcSmoothingAutoCalculate()) {
+            const uint16_t avgRxFrameUs = rcSmoothingData->averageFrameTimeUs;
             cliPrint("# Detected RX frame rate: ");
-            if (avgRxFrameMs == 0) {
+            if (avgRxFrameUs == 0) {
                 cliPrintLine("NO SIGNAL");
             } else {
-                cliPrintLinef("%d.%dms", avgRxFrameMs / 1000, avgRxFrameMs % 1000);
+                cliPrintLinef("%d.%03dms", avgRxFrameUs / 1000, avgRxFrameUs % 1000);
             }
         }
         cliPrintLinef("# Input filter type: %s", lookupTables[TABLE_RC_SMOOTHING_INPUT_TYPE].values[rcSmoothingData->inputFilterType]);
@@ -5737,7 +5744,7 @@ static void cliTimer(char *cmdline)
 
     pch = strtok_r(NULL, " ", &saveptr);
     if (pch) {
-        int timerIndex;
+        int timerIndex = TIMER_INDEX_UNDEFINED;
         if (strcasecmp(pch, "list") == 0) {
             /* output the list of available options */
             const timerHardware_t *timer;
@@ -5751,8 +5758,6 @@ static void cliTimer(char *cmdline)
             }
 
             return;
-        } else if (strcasecmp(pch, "none") == 0) {
-            timerIndex = TIMER_INDEX_UNDEFINED;
         } else if (strncasecmp(pch, "af", 2) == 0) {
             unsigned alternateFunction = atoi(&pch[2]);
 
@@ -5770,7 +5775,7 @@ static void cliTimer(char *cmdline)
 
                 return;
             }
-        } else {
+        } else if (strcasecmp(pch, "none") != 0) {
             timerIndex = atoi(pch);
 
             const timerHardware_t *timer = timerGetByTagAndIndex(ioTag, timerIndex + 1);
@@ -6099,12 +6104,12 @@ static void printConfig(char *cmdline, bool doDiff)
 
             printRxRange(dumpMask, rxChannelRangeConfigs_CopyArray, rxChannelRangeConfigs(0), "rxrange");
 
-#ifdef USE_VTX_CONTROL
-            printVtx(dumpMask, &vtxConfig_Copy, vtxConfig(), "vtx");
-#endif
-
 #ifdef USE_VTX_TABLE
             printVtxTable(dumpMask, &vtxTableConfig_Copy, vtxTableConfig(), "vtxtable");
+#endif
+
+#ifdef USE_VTX_CONTROL
+            printVtx(dumpMask, &vtxConfig_Copy, vtxConfig(), "vtx");
 #endif
 
             printRxFailsafe(dumpMask, rxFailsafeChannelConfigs_CopyArray, rxFailsafeChannelConfigs(0), "rxfail");

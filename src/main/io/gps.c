@@ -355,7 +355,12 @@ void gpsInitNmea(void)
                serialSetBaudRate(gpsPort, baudRates[gpsInitData[gpsData.baudrateIndex].baudrateIndex]);
            }
 #endif
-               gpsSetState(GPS_RECEIVING_DATA);
+               //gpsSetState(GPS_RECEIVING_DATA);
+               gpsSetState(GPS_CONFIGURE);
+            break;
+        case GPS_CONFIGURE:
+                serialPrint(gpsPort, "$PMTK220,200*2C\r\n"); // set rate to 5Hz (measurement period: 200ms, navigation rate: 1 cycle)
+                gpsSetState(GPS_RECEIVING_DATA);
             break;
     }
 }

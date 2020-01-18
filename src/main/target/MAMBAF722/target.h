@@ -61,7 +61,7 @@
 #define USE_VCP
 #define USE_UART1
 #define USE_UART2
-#define USE_UART3
+//#define USE_UART3
 #define USE_UART4
 #define USE_UART5
 #define USE_UART6
@@ -72,8 +72,8 @@
 #define UART2_TX_PIN            PA2
 #define UART2_RX_PIN            PA3
 
-#define UART3_TX_PIN            PB10
-#define UART3_RX_PIN            PB11
+//#define UART3_TX_PIN            PB10
+//#define UART3_RX_PIN            PB11
 
 #define UART4_TX_PIN            PA0
 #define UART4_RX_PIN            PA1
@@ -87,7 +87,20 @@
 #define USE_SOFTSERIAL1
 #define USE_SOFTSERIAL2
 
-#define SERIAL_PORT_COUNT       9 //VCP, UART1-UART6 , 2 x Soft Serial
+#define SERIAL_PORT_COUNT       8 //VCP, UART1-UART6 , 2 x Soft Serial
+
+// *************** I2C **************************
+#define USE_I2C
+//#define USE_I2C_PULLUP
+#define USE_I2C_DEVICE_2
+#define I2C_DEVICE              (I2CDEV_2)
+#define I2C1_SCL                PB10
+#define I2C1_SDA                PB11
+
+// *************** BARO **************************
+#define USE_BARO
+#define BARO_I2C_INSTANCE       (I2CDEV_2)
+#define USE_BARO_BMP280
 
 // ******* SPI ********
 

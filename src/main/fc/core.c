@@ -103,6 +103,8 @@
 
 #include "telemetry/telemetry.h"
 
+#include "todo/todo.h"
+
 
 enum {
     ALIGN_GYRO = 0,
@@ -303,6 +305,14 @@ void updateArmingStatus(void)
             } else {
                 unsetArmingDisabled(ARMING_DISABLED_RESC);
             }
+        }
+#endif
+
+#ifdef USE_CMS_TODO_MENU
+        if (!isTodoCompleted()) {
+            setArmingDisabled(ARMING_DISABLED_TODO);
+        } else {
+            unsetArmingDisabled(ARMING_DISABLED_TODO);
         }
 #endif
 

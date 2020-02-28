@@ -41,6 +41,7 @@
 #include "cms/cms_menu_imu.h"
 #include "cms/cms_menu_blackbox.h"
 #include "cms/cms_menu_failsafe.h"
+#include "cms/cms_menu_todo.h"
 #include "cms/cms_menu_ledstrip.h"
 #include "cms/cms_menu_misc.h"
 #include "cms/cms_menu_osd.h"
@@ -128,6 +129,9 @@ static const OSD_Entry menuFeaturesEntries[] =
 #ifdef USE_CMS_FAILSAFE_MENU
     {"FAILSAFE", OME_Submenu, cmsMenuChange, &cmsx_menuFailsafe, 0},
 #endif
+#ifdef USE_CMS_TODO_MENU
+    {"TODO", OME_Submenu, cmsMenuChange, &cmsx_menuToDo, 0},
+#endif
     {"BACK", OME_Back, NULL, NULL, 0},
     {NULL, OME_END, NULL, NULL, 0}
 };
@@ -159,6 +163,8 @@ static long cmsx_SaveExitMenu(displayPort_t *pDisplay, const void *ptr)
 static const OSD_Entry menuMainEntries[] =
 {
     {"-- MAIN --",  OME_Label, NULL, NULL, 0},
+
+    {"-- QUE MIRA SAPO --",  OME_Label, NULL, NULL, 0},
 
     {"PROFILE",     OME_Submenu,  cmsMenuChange, &cmsx_menuImu, 0},
     {"FEATURES",    OME_Submenu,  cmsMenuChange, &menuFeatures, 0},

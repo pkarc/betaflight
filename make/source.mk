@@ -127,10 +127,12 @@ COMMON_SRC = \
             blackbox/blackbox.c \
             blackbox/blackbox_encoding.c \
             blackbox/blackbox_io.c \
+            todo/todo.c \
             cms/cms.c \
             cms/cms_menu_blackbox.c \
             cms/cms_menu_builtin.c \
             cms/cms_menu_failsafe.c \
+            cms/cms_menu_todo.c \
             cms/cms_menu_gps_rescue.c\
             cms/cms_menu_imu.c \
             cms/cms_menu_ledstrip.c \

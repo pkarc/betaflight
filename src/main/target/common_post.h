@@ -283,6 +283,7 @@
 
 #ifndef USE_CMS
 #undef USE_CMS_FAILSAFE_MENU
+#undef USE_CMS_TODO_MENU
 #endif
 
 #ifndef USE_DSHOT

@@ -102,6 +102,14 @@
 #define BARO_I2C_INSTANCE       (I2CDEV_2)
 #define USE_BARO_BMP280
 
+// ******* MAG ********
+
+#define USE_MAG
+#define USE_MPU9250_MAG_ONLY // Enables bypass configuration
+#define USE_MAG_AK8963
+
+#define MAG_AK8963_ALIGN        CW180_DEG_FLIP
+
 // ******* SPI ********
 
 #define USE_SPI

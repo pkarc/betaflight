@@ -77,6 +77,10 @@
 #define AK8963_MAG_REG_ASAY             0x11 // Fuse ROM y-axis sensitivity adjustment value
 #define AK8963_MAG_REG_ASAZ             0x12 // Fuse ROM z-axis sensitivity adjustment value
 
+#define MPU9250_ADDRESS                 0x68
+#define MPU9250_REG_INT_PIN_CFG         0x37
+#define MPU9250_BIT_BYPASS_EN           0x02
+
 #define READ_FLAG                       0x80
 #define I2C_SLV0_EN                     0x80
 
@@ -371,6 +375,9 @@ void ak8963BusInit(busDevice_t *busdev)
     switch (busdev->bustype) {
 #ifdef USE_MAG_AK8963
     case BUSTYPE_I2C:
+        #ifdef USE_MPU9250_MAG_ONLY
+        i2cWrite(busdev->busdev_u.i2c.device, MPU9250_ADDRESS, MPU9250_REG_INT_PIN_CFG, MPU9250_BIT_BYPASS_EN);
+        #endif
         UNUSED(busdev);
         break;
 #endif

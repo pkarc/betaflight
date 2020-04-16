@@ -359,8 +359,26 @@ void gpsInitNmea(void)
                gpsSetState(GPS_CONFIGURE);
             break;
         case GPS_CONFIGURE:
-                serialPrint(gpsPort, "$PMTK220,200*2C\r\n"); // set rate to 5Hz (measurement period: 200ms, navigation rate: 1 cycle)
+                
+            if ( gpsConfig()->autoConfig == GPS_AUTOCONFIG_OFF ) {
                 gpsSetState(GPS_RECEIVING_DATA);
+                break;
+            }
+
+            // Disable all messages except RMC, GGA and GSV
+            serialPrint(gpsPort, "$PMTK314,0,1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0*29\r\n");
+
+            // Set Nav Threshold (the minimum speed the GPS must be moving to update the position) to 0 m/s
+            serialPrint(gpsPort, "$PMTK386,0*23\r\n");
+
+            if ( gpsConfig()->sbasMode == SBAS_AUTO) {
+                serialPrint(gpsPort, "$PMTK313,1*2E\r\n");     // SBAS ON
+                serialPrint(gpsPort, "$PMTK301,2*2E\r\n");     // WAAS/EGNOS/GAGAN/MSAS ON
+            }
+
+            serialPrint(gpsPort, "$PMTK220,100*2F\r\n"); // set rate to 10Hz (measurement period: 100ms, navigation rate: 1 cycle)
+
+            gpsSetState(GPS_RECEIVING_DATA);
             break;
     }
 }
@@ -733,7 +751,7 @@ static bool gpsNewFrameNMEA(char c)
                     gps_frame = FRAME_GGA;
                 } else if (0 == strcmp(string, "GPRMC") || 0 == strcmp(string, "GNRMC")) {
                     gps_frame = FRAME_RMC;
-                } else if (0 == strcmp(string, "GPGSV")) {
+                } else if (0 == strcmp(string, "GPGSV") || 0 == strcmp(string, "GLGSV")) {
                     gps_frame = FRAME_GSV;
                 }
             }

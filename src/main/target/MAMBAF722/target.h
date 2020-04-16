@@ -91,24 +91,24 @@
 
 // *************** I2C **************************
 #define USE_I2C
-//#define USE_I2C_PULLUP
+#define USE_I2C_PULLUP
 #define USE_I2C_DEVICE_2
 #define I2C_DEVICE              (I2CDEV_2)
-#define I2C1_SCL                PB10
-#define I2C1_SDA                PB11
+#define I2C2_SCL                PB10
+#define I2C2_SDA                PB11
 
 // *************** BARO **************************
 #define USE_BARO
-#define BARO_I2C_INSTANCE       (I2CDEV_2)
 #define USE_BARO_BMP280
+#define BARO_I2C_INSTANCE       I2C_DEVICE
 
 // ******* MAG ********
 
 #define USE_MAG
-#define USE_MPU9250_MAG_ONLY // Enables bypass configuration
-#define USE_MAG_AK8963
+#define USE_MAG_MPU9250_AK8963
+#define MAG_I2C_INSTANCE        I2C_DEVICE
 
-#define MAG_AK8963_ALIGN        CW180_DEG_FLIP
+#define MAG_MPU9250_AK8963_ALIGN        CW180_DEG_FLIP
 
 // ******* SPI ********
 

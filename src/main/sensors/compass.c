@@ -80,7 +80,7 @@ void pgResetFn_compassConfig(compassConfig_t *compassConfig)
     compassConfig->mag_spi_csn = IO_TAG(MAG_CS_PIN);
     compassConfig->mag_i2c_device = I2C_DEV_TO_CFG(I2CINVALID);
     compassConfig->mag_i2c_address = 0;
-#elif defined(USE_MAG_HMC5883) || defined(USE_MAG_QMC5883) || defined(USE_MAG_AK8975) || (defined(USE_MAG_AK8963) && !(defined(USE_GYRO_SPI_MPU6500) || defined(USE_GYRO_SPI_MPU9250)))
+#elif defined(USE_MAG_MPU9250_AK8963) || defined(USE_MAG_HMC5883) || defined(USE_MAG_QMC5883) || defined(USE_MAG_AK8975) || (defined(USE_MAG_AK8963) && !(defined(USE_GYRO_SPI_MPU6500) || defined(USE_GYRO_SPI_MPU9250)))
     compassConfig->mag_bustype = BUSTYPE_I2C;
     compassConfig->mag_i2c_device = I2C_DEV_TO_CFG(MAG_I2C_INSTANCE);
     compassConfig->mag_i2c_address = 0;
@@ -279,6 +279,7 @@ bool compassDetect(magDev_t *dev, uint8_t *alignment)
     }
 
     if (magHardware == MAG_NONE) {
+        sensorsClear(SENSOR_MAG);
         return false;
     }
 
@@ -339,6 +340,7 @@ void compassUpdate(timeUs_t currentTimeUs)
     static flightDynamicsTrims_t magZeroTempMax;
 
     magDev.read(&magDev, magADCRaw);
+
     for (int axis = 0; axis < XYZ_AXIS_COUNT; axis++) {
         mag.magADC[axis] = magADCRaw[axis];
     }

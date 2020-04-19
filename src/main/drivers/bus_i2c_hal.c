@@ -388,12 +388,25 @@ void i2cInit(I2CDevice device)
 
     /// TODO: HAL check if I2C timing is correct
 
+/*
     if (pDev->overClock) {
         // 800khz Maximum speed tested on various boards without issues
         pHandle->Init.Timing = 0x00500D1D;
     } else {
         pHandle->Init.Timing = 0x00500C6F;
     }
+    */
+
+    //pHandle->Init.Timing = 0x00500C6F; // 400 Khz, Betaflight default timing
+    //pHandle->Init.Timing = 0x00503139; // 400 Khz
+    //pHandle->Init.Timing = 0x30E0257A; // 100 Khz, 72Mhz Clock, Analog Filter Delay ON, Rise 100, Fall 10.
+
+    pHandle->Init.Timing = 0x00A01B5B;  // 400kHz, Rise 100ns, Fall 10ns    0x00500B6A, 0x00A01B5B
+    //pHandle->Init.Timing = 0x00401B1B;  // 800khz, Rise 40, Fall 4
+    //pHandle->Init.Timing = 0x60100544;  // 100kHz, Rise 100ns, Fall 10ns
+    //pHandle->Init.Timing = 0x00A01EDF;  // 200kHz, Rise 100ns, Fall 10ns
+
+    //pHandle->Init.Timing = 0x00500B6A;  // 400kHz, Rise 100ns, Fall 10ns 
 
     pHandle->Init.OwnAddress1 = 0x0;
     pHandle->Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
@@ -406,6 +419,9 @@ void i2cInit(I2CDevice device)
 
     // Enable the Analog I2C Filter
     HAL_I2CEx_ConfigAnalogFilter(pHandle, I2C_ANALOGFILTER_ENABLE);
+
+    // Enable the Digital I2C Filter
+    //HAL_I2CEx_ConfigDigitalFilter(pHandle, 0x00000001U);
 
     // Setup interrupt handlers
     HAL_NVIC_SetPriority(hardware->er_irq, NVIC_PRIORITY_BASE(NVIC_PRIO_I2C_ER), NVIC_PRIORITY_SUB(NVIC_PRIO_I2C_ER));

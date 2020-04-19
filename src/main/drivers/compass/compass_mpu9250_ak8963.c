@@ -89,9 +89,13 @@
 #define MPU9250_BIT_INT_ANYRD_2CLEAR    0x10
 #define MPU9250_REG_PWR_MGMT_1          0x6B
 #define MPU9250_BIT_H_RESET             0x80
+#define MPU9250_BIT_CLEAR_SLEEP         0x00
+#define MPU9250_BIT_AUTO_PLL            0x01
 #define MPU9250_REG_PWR_MGMT_2          0x6C
 #define MPU9250_BIT_DIS_XYZA            0x38
 #define MPU9250_BIT_DIS_XYZG            0x07
+#define MPU9250_REG_I2C_MST_CTRL        0x24
+#define MPU9250_BIT_I2C_MST_CLK_400     0x0D
 #define MPU9250_REG_WIA                 0x75
 #define MPU9250_DEVICE_ID               0x71
 
@@ -124,19 +128,73 @@ static int16_t parseMag(uint8_t *raw, int16_t gain) {
   return constrain(ret, INT16_MIN, INT16_MAX);
 }
 
+bool mpu9250CheckAndEnableBypass()
+{
+
+    uint8_t bypass_cfg = 0;
+    bool ack = busReadRegisterBuffer(mpu9250Busdev, MPU9250_REG_INT_PIN_CFG, &bypass_cfg, 1);               // check for MPU9250
+
+#ifdef USE_CLI_DEBUG_PRINT
+        cliDebugPrintLinef("mpu bypass ack %d", ack);
+        cliDebugPrintLinef("MPU9250_REG_INT_PIN_CFG    0x%X", bypass_cfg);
+#endif
+
+    if (!ack) {
+        return false;
+    }
+
+    if(bypass_cfg == MPU9250_BIT_BYPASS_EN){
+        return true;
+    }
+
+#ifdef USE_CLI_DEBUG_PRINT
+    cliDebugPrintLine("resetting mpu9250 ...");
+#endif
+    //Reset
+    //busWriteRegister(mpu9250Busdev, MPU9250_REG_SIG_PATH_RST, MPU9250_BIT_GYRO_RST | MPU9250_BIT_ACCL_RST | MPU9250_BIT_TEMP_RST);
+    //busWriteRegister(mpu9250Busdev, MPU9250_REG_USER_CTRL, MPU9250_BIT_SIG_COND_RST);
+    //busWriteRegister(mpu9250Busdev, MPU9250_REG_PWR_MGMT_1, MPU9250_BIT_H_RESET);
+    //busWriteRegister(mpu9250Busdev, MPU9250_REG_PWR_MGMT_1, MPU9250_BIT_CLEAR_SLEEP);
+    //delay(10);
+    //busWriteRegister(mpu9250Busdev, MPU9250_REG_PWR_MGMT_1, MPU9250_BIT_AUTO_PLL);
+    //delay(10);
+    //busWriteRegister(mpu9250Busdev, MPU9250_REG_I2C_MST_CTRL, MPU9250_BIT_I2C_MST_CLK_400);
+    //delay(10);
+#ifdef USE_CLI_DEBUG_PRINT
+    cliDebugPrintLine("enable mpu9250 bypass ...");
+#endif
+    busWriteRegister(mpu9250Busdev, MPU9250_REG_USER_CTRL, MPU9250_BIT_I2C_MST_DIS);
+    //busWriteRegister(mpu9250Busdev, MPU9250_REG_PWR_MGMT_2, MPU9250_BIT_DIS_XYZA | MPU9250_BIT_DIS_XYZG);
+    busWriteRegister(mpu9250Busdev, MPU9250_REG_INT_PIN_CFG, MPU9250_BIT_BYPASS_EN);
+    delay(1);
+
+    return true;
+
+}
+
 static bool mpu9250ak8963Read(magDev_t *mag, int16_t *magData)
 {
 
     bool ack = false;
 
     const busDevice_t *busdev = &mag->busdev;
-
     
     uint8_t status;
+
+    /*
+    if(!mpu9250CheckAndEnableBypass()){
+        return false;
+    }
+    */
+
+   if (busBusy(busdev, NULL)) {
+        return false;
+    }
 
     ack = busReadRegisterBuffer(busdev, AK8963_MAG_REG_ST1, &status, 1);
 
     if (!ack || (status & ST1_DATA_READY) == 0) {
+        // too early. queue the status read again
         return false;
     }
 
@@ -167,14 +225,14 @@ static bool mpu9250ak8963Read(magDev_t *mag, int16_t *magData)
 static bool mpu9250ak8963Init(magDev_t *mag)
 {
     uint8_t asa[3];
-    //uint8_t status1, status2;
+    uint8_t status1, status2;
 
     const busDevice_t *busdev = &mag->busdev;
 
     busWriteRegister(busdev, AK8963_MAG_REG_CNTL1, CNTL1_MODE_POWER_DOWN);               // power down before entering fuse mode
-    delay(2);
+    //delay(1);
     busWriteRegister(busdev, AK8963_MAG_REG_CNTL1, CNTL1_MODE_FUSE_ROM);                 // Enter Fuse ROM access mode
-    delay(2);
+    //delay(1);
     busReadRegisterBuffer(busdev, AK8963_MAG_REG_ASAX, asa, sizeof(asa));                // Read the x-, y-, and z-axis calibration values
 
     mag->magGain[X] = asa[X] + 128;
@@ -182,44 +240,24 @@ static bool mpu9250ak8963Init(magDev_t *mag)
     mag->magGain[Z] = asa[Z] + 128;
 
     busWriteRegister(busdev, AK8963_MAG_REG_CNTL1, CNTL1_MODE_POWER_DOWN);               // power down after reading.
-    delay(2);
+    //delay(1);
 
     // Clear status registers
-    //busReadRegisterBuffer(busdev, AK8963_MAG_REG_ST1, &status1, 1);
+    busReadRegisterBuffer(busdev, AK8963_MAG_REG_ST1, &status1, 1);
 
     //cliDebugPrintLinef("AK8963_MAG_REG_ST1    0x%X", status1);
 
-    //busReadRegisterBuffer(busdev, AK8963_MAG_REG_ST2, &status2, 1);
+    busReadRegisterBuffer(busdev, AK8963_MAG_REG_ST2, &status2, 1);
 
     //cliDebugPrintLinef("AK8963_MAG_REG_ST2    0x%X", status2);
 
     // Trigger first measurement
     //busWriteRegister(busdev, AK8963_MAG_REG_CNTL1, CNTL1_BIT_16_BIT | CNTL1_MODE_CONT1);
     busWriteRegister(busdev, AK8963_MAG_REG_CNTL1, CNTL1_BIT_16_BIT | CNTL1_MODE_CONT2);
-    delay(2);
+    //busWriteRegister(busdev, AK8963_MAG_REG_CNTL1, CNTL1_BIT_16_BIT | CNTL1_MODE_ONCE);
+    //delay(4);
 
     return true;
-}
-
-void mpu9250ak8963BusInit()
-{
-
-#ifdef USE_CLI_DEBUG_PRINT
-    cliDebugPrintLine("resetting mpu9250 ...");
-#endif
-    //Reset
-    busWriteRegister(mpu9250Busdev, MPU9250_REG_SIG_PATH_RST, MPU9250_BIT_GYRO_RST | MPU9250_BIT_ACCL_RST | MPU9250_BIT_TEMP_RST);
-    busWriteRegister(mpu9250Busdev, MPU9250_REG_USER_CTRL, MPU9250_BIT_SIG_COND_RST);
-    busWriteRegister(mpu9250Busdev, MPU9250_REG_PWR_MGMT_1, MPU9250_BIT_H_RESET);
-    delay(4);
-#ifdef USE_CLI_DEBUG_PRINT
-    cliDebugPrintLine("enable mpu9250 bypass ...");
-#endif
-    busWriteRegister(mpu9250Busdev, MPU9250_REG_USER_CTRL, MPU9250_BIT_I2C_MST_DIS);
-    busWriteRegister(mpu9250Busdev, MPU9250_REG_PWR_MGMT_2, MPU9250_BIT_DIS_XYZA | MPU9250_BIT_DIS_XYZG);
-    busWriteRegister(mpu9250Busdev, MPU9250_REG_INT_PIN_CFG, MPU9250_BIT_BYPASS_EN);
-    delay(4);
-
 }
 
 void mpu9259ak8963BusDeInit(const busDevice_t *busdev)
@@ -228,15 +266,15 @@ void mpu9259ak8963BusDeInit(const busDevice_t *busdev)
 }
 
 #define DETECTION_MAX_RETRY_COUNT   5
-static bool ak8963Detect(busDevice_t *busdev)
 
+static bool ak8963Detect(busDevice_t *busdev)
 {
 #ifdef USE_CLI_DEBUG_PRINT
     cliDebugPrintLine("detecting ak8963 ...");
 #endif
 
-    busWriteRegister(busdev, AK8963_MAG_REG_CNTL2, CNTL2_SOFT_RESET);                    // reset MAG
-    delay(4);
+    //busWriteRegister(busdev, AK8963_MAG_REG_CNTL2, CNTL2_SOFT_RESET);                    // reset MAG
+    //delay(4);
 
     for (int retryCount = 0; retryCount < DETECTION_MAX_RETRY_COUNT; retryCount++) {
         delay(10);
@@ -297,7 +335,10 @@ bool mpu9250ak8963Detect(magDev_t *mag)
         return false;
     }
 
-    mpu9250ak8963BusInit();
+    if(!mpu9250CheckAndEnableBypass()){
+        mpu9259ak8963BusDeInit(busdev);
+        return false;
+    }
 
     if (!ak8963Detect(busdev)) {
         mpu9259ak8963BusDeInit(busdev);

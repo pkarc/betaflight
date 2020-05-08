@@ -378,7 +378,8 @@ void gpsInitNmea(void)
                 serialPrint(gpsPort, "$PMTK301,2*2E\r\n");     // WAAS/EGNOS/GAGAN/MSAS ON
             }
 
-            serialPrint(gpsPort, "$PMTK220,100*2F\r\n"); // set rate to 10Hz (measurement period: 100ms, navigation rate: 1 cycle)
+            serialPrint(gpsPort, "$PMTK220,501*2A\r\n"); // set rate to 5Hz (measurement period: 501ms, navigation rate: 1 cycle)
+            //serialPrint(gpsPort, "$PMTK220,100*2F\r\n"); // set rate to 10Hz (measurement period: 100ms, navigation rate: 1 cycle)
 
             gpsSetState(GPS_RECEIVING_DATA);
             break;

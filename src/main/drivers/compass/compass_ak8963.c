@@ -77,8 +77,25 @@
 #define AK8963_MAG_REG_ASAY             0x11 // Fuse ROM y-axis sensitivity adjustment value
 #define AK8963_MAG_REG_ASAZ             0x12 // Fuse ROM z-axis sensitivity adjustment value
 
+#define MPU9250_ADDRESS                 0x68
+#define MPU9250_REG_USER_CTRL           0x6A
+#define MPU9250_BIT_I2C_MST_DIS         0x00
+#define MPU9250_BIT_SIG_COND_RST        0x01
+#define MPU9250_REG_SIG_PATH_RST        0x68
+#define MPU9250_BIT_GYRO_RST            0x04
+#define MPU9250_BIT_ACCL_RST            0x02
+#define MPU9250_BIT_TEMP_RST            0x01
+#define MPU9250_REG_INT_PIN_CFG         0x37
+#define MPU9250_BIT_BYPASS_EN           0x02
+#define MPU9250_BIT_INT_ANYRD_2CLEAR    0x10
+#define MPU9250_REG_PWR_MGMT_1          0x6B
+#define MPU9250_BIT_H_RESET             0x80
+#define MPU9250_REG_PWR_MGMT_2          0x6C
+#define MPU9250_BIT_DIS_XYZA            0x38
+#define MPU9250_BIT_DIS_XYZG            0x07
+
 #define READ_FLAG                       0x80
-#define I2C_SLV0_EN                     0x80
+#define I2C_SLV0_EN                     0x80    
 
 #define ST1_DATA_READY                  0x01
 #define ST1_DATA_OVERRUN                0x02
@@ -327,7 +344,7 @@ static bool ak8963Read(magDev_t *mag, int16_t *magData)
         return false;
     }
 
-    ak8963WriteRegister(busdev, AK8963_MAG_REG_CNTL1, CNTL1_BIT_16_BIT | CNTL1_MODE_ONCE); // start reading again    uint8_t status2 = buf[6];
+    //ak8963WriteRegister(busdev, AK8963_MAG_REG_CNTL1, CNTL1_BIT_16_BIT | CNTL1_MODE_ONCE); // start reading again    uint8_t status2 = buf[6];
 
     if (status2 & ST2_MAG_SENSOR_OVERFLOW) {
         return false;
@@ -362,7 +379,8 @@ static bool ak8963Init(magDev_t *mag)
     ak8963ReadRegisterBuffer(busdev, AK8963_MAG_REG_ST2, &status, 1);
 
     // Trigger first measurement
-    ak8963WriteRegister(busdev, AK8963_MAG_REG_CNTL1, CNTL1_BIT_16_BIT | CNTL1_MODE_ONCE);
+    ak8963WriteRegister(busdev, AK8963_MAG_REG_CNTL1, CNTL1_BIT_16_BIT | CNTL1_MODE_CONT2);
+
     return true;
 }
 
@@ -371,7 +389,17 @@ void ak8963BusInit(busDevice_t *busdev)
     switch (busdev->bustype) {
 #ifdef USE_MAG_AK8963
     case BUSTYPE_I2C:
-        UNUSED(busdev);
+        #ifdef USE_MPU9250_MAG_ONLY
+        //Reset
+        i2cWrite(1, MPU9250_ADDRESS, MPU9250_REG_SIG_PATH_RST, MPU9250_BIT_GYRO_RST | MPU9250_BIT_ACCL_RST | MPU9250_BIT_TEMP_RST);
+        i2cWrite(1, MPU9250_ADDRESS, MPU9250_REG_USER_CTRL, MPU9250_BIT_SIG_COND_RST);
+        i2cWrite(1, MPU9250_ADDRESS, MPU9250_REG_PWR_MGMT_1, MPU9250_BIT_H_RESET);
+        delay(20);
+        i2cWrite(1, MPU9250_ADDRESS, MPU9250_REG_USER_CTRL, MPU9250_BIT_I2C_MST_DIS);
+        //i2cWrite(1, MPU9250_ADDRESS, MPU9250_REG_PWR_MGMT_2, MPU9250_BIT_DIS_XYZA | MPU9250_BIT_DIS_XYZG);
+        i2cWrite(1, MPU9250_ADDRESS, MPU9250_REG_INT_PIN_CFG, MPU9250_BIT_BYPASS_EN);
+        delay(4);
+        #endif
         break;
 #endif
 
@@ -428,9 +456,31 @@ void ak8963BusDeInit(const busDevice_t *busdev)
     }
 }
 
+#define DETECTION_MAX_RETRY_COUNT   5
+static bool deviceDetect(magDev_t * mag)
+{
+
+    busDevice_t *busdev = &mag->busdev;
+
+    for (int retryCount = 0; retryCount < DETECTION_MAX_RETRY_COUNT; retryCount++) {
+        delay(10);
+
+        //ak8963WriteRegister(busdev, AK8963_MAG_REG_CNTL2, CNTL2_SOFT_RESET);                    // reset MAG
+        //delay(10);
+
+        uint8_t sig = 0;
+        bool ack = ak8963ReadRegisterBuffer(busdev, AK8963_MAG_REG_WIA, &sig, 1);               // check for AK8963
+
+        if (ack && sig == AK8963_DEVICE_ID) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 bool ak8963Detect(magDev_t *mag)
 {
-    uint8_t sig = 0;
 
     busDevice_t *busdev = &mag->busdev;
 
@@ -440,21 +490,14 @@ bool ak8963Detect(magDev_t *mag)
 
     ak8963BusInit(busdev);
 
-    ak8963WriteRegister(busdev, AK8963_MAG_REG_CNTL2, CNTL2_SOFT_RESET);                    // reset MAG
-    delay(4);
-
-    bool ack = ak8963ReadRegisterBuffer(busdev, AK8963_MAG_REG_WIA, &sig, 1);               // check for AK8963
-
-    if (ack && sig == AK8963_DEVICE_ID) // 0x48 / 01001000 / 'H'
-    {
-        mag->init = ak8963Init;
-        mag->read = ak8963Read;
-
-        return true;
+    if (!deviceDetect(mag)) {
+        ak8963BusDeInit(busdev);
+        return false;
     }
 
-    ak8963BusDeInit(busdev);
+    mag->init = ak8963Init;
+    mag->read = ak8963Read;
 
-    return false;
+    return true;
 }
 #endif

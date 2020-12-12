@@ -175,6 +175,15 @@ static void taskUpdateRxMain(timeUs_t currentTimeUs)
 #endif
 }
 
+#ifdef USE_MAG
+void taskUpdateCompass(timeUs_t currentTimeUs)
+{
+    if (sensors(SENSOR_MAG)) {
+        compassUpdate(currentTimeUs);
+    }
+}
+#endif
+
 #ifdef USE_BARO
 static void taskUpdateBaro(timeUs_t currentTimeUs)
 {
@@ -299,6 +308,10 @@ void tasksInit(void)
 
 #ifdef USE_MAG
     setTaskEnabled(TASK_COMPASS, sensors(SENSOR_MAG));
+#if defined(USE_MAG_MPU9250_AK8963)
+    // fixme temporary solution for AK8983 via slave I2C on MPU9250
+    rescheduleTask(TASK_COMPASS, TASK_PERIOD_HZ(40));
+#endif
 #endif
 
 #ifdef USE_BARO
@@ -431,7 +444,7 @@ task_t tasks[TASK_COUNT] = {
 #endif
 
 #ifdef USE_MAG
-    [TASK_COMPASS] = DEFINE_TASK("COMPASS", NULL, NULL, compassUpdate,TASK_PERIOD_HZ(10), TASK_PRIORITY_LOW),
+    [TASK_COMPASS] = DEFINE_TASK("COMPASS", NULL, NULL, taskUpdateCompass, TASK_PERIOD_HZ(10), TASK_PRIORITY_LOW),
 #endif
 
 #ifdef USE_BARO

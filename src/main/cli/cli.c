@@ -433,6 +433,10 @@ static bool cliDefaultPrintLinef(dumpFlags_t dumpMask, bool equalsDefault, const
 
 void cliPrintf(const char *format, ...)
 {
+    if (!cliMode) {
+        return;
+    }
+
     va_list va;
     va_start(va, format);
     cliPrintfva(format, va);
@@ -442,6 +446,10 @@ void cliPrintf(const char *format, ...)
 
 void cliPrintLinef(const char *format, ...)
 {
+    if (!cliMode) {
+        return;
+    }
+
     va_list va;
     va_start(va, format);
     cliPrintfva(format, va);
@@ -3582,6 +3590,19 @@ static void cliGpsPassthrough(const char *cmdName, char *cmdline)
 }
 #endif
 
+
+#if defined(USE_MAG) && defined(USE_CLI_DEBUG_PRINT)
+static void cliCompassInit(char *cmdline)
+{
+
+    cliPrintLine("Initiating Compass...");
+
+    compassInit();
+
+    UNUSED(cmdline);
+}
+#endif
+
 #if defined(USE_GYRO_REGISTER_DUMP) && !defined(SIMULATOR_BUILD)
 static void cliPrintGyroRegisters(uint8_t whichSensor)
 {
@@ -6428,6 +6449,9 @@ const clicmd_t cmdTable[] = {
     CLI_COMMAND_DEF("get", "get variable value", "[name]", cliGet),
 #ifdef USE_GPS
     CLI_COMMAND_DEF("gpspassthrough", "passthrough gps to serial", NULL, cliGpsPassthrough),
+#endif
+#if defined(USE_MAG) && defined(USE_CLI_DEBUG_PRINT)
+    CLI_COMMAND_DEF("compassinit", "try to init compass", NULL, cliCompassInit),
 #endif
 #if defined(USE_GYRO_REGISTER_DUMP) && !defined(SIMULATOR_BUILD)
     CLI_COMMAND_DEF("gyroregisters", "dump gyro config registers contents", NULL, cliDumpGyroRegisters),

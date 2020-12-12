@@ -90,6 +90,8 @@ uint32_t GPS_svInfoReceivedCount = 0; // SV = Space Vehicle, counter increments 
 uint8_t GPS_update = 0;             // toogle to distinct a GPS position update (directly or via MSP)
 
 uint8_t GPS_numCh;                          // Number of channels
+uint8_t GPS_gpsNumCh;                       // Number of gps channels
+uint8_t GPS_glonassNumCh;                   // Number of glonass channels
 uint8_t GPS_svinfo_chn[GPS_SV_MAXSATS];     // Channel number
 uint8_t GPS_svinfo_svid[GPS_SV_MAXSATS];    // Satellite ID
 uint8_t GPS_svinfo_quality[GPS_SV_MAXSATS]; // Bitfield Qualtity
@@ -373,7 +375,31 @@ void gpsInitNmea(void)
                serialSetBaudRate(gpsPort, baudRates[gpsInitData[gpsData.baudrateIndex].baudrateIndex]);
            }
 #endif
-               gpsSetState(GPS_RECEIVING_DATA);
+               //gpsSetState(GPS_RECEIVING_DATA);
+               gpsSetState(GPS_CONFIGURE);
+            break;
+        case GPS_CONFIGURE:
+                
+            if ( gpsConfig()->autoConfig == GPS_AUTOCONFIG_OFF ) {
+                gpsSetState(GPS_RECEIVING_DATA);
+                break;
+            }
+
+            // Disable all messages except RMC, GGA and GSV
+            serialPrint(gpsPort, "$PMTK314,0,1,0,1,0,1,0,0,0,0,0,0,0,0,0,0,0,0,0*29\r\n");
+
+            // Set Nav Threshold (the minimum speed the GPS must be moving to update the position) to 0 m/s
+            serialPrint(gpsPort, "$PMTK386,0*23\r\n");
+
+            if ( gpsConfig()->sbasMode == SBAS_AUTO) {
+                serialPrint(gpsPort, "$PMTK313,1*2E\r\n");     // SBAS ON
+                serialPrint(gpsPort, "$PMTK301,2*2E\r\n");     // WAAS/EGNOS/GAGAN/MSAS ON
+            }
+
+            serialPrint(gpsPort, "$PMTK220,501*2A\r\n"); // set rate to 5Hz (measurement period: 501ms, navigation rate: 1 cycle)
+            //serialPrint(gpsPort, "$PMTK220,100*2F\r\n"); // set rate to 10Hz (measurement period: 100ms, navigation rate: 1 cycle)
+
+            gpsSetState(GPS_RECEIVING_DATA);
             break;
     }
 }
@@ -634,7 +660,7 @@ void gpsInitUblox(void)
                 }
             }
 
-            if (gpsData.messageState >= GPS_MESSAGE_STATE_INITIALIZED) {
+            if (gpsData.messageState >= GPS_MESSAGE_STATE_ENTRY_COUNT) {
                 // ublox should be initialised, try receiving
                 gpsSetState(GPS_RECEIVING_DATA);
             }
@@ -905,10 +931,10 @@ static bool gpsNewFrameNMEA(char c)
 
     uint8_t frameOK = 0;
     static uint8_t param = 0, offset = 0, parity = 0;
-    static char string[15];
+    static char string[15], satSystem;
     static uint8_t checksum_param, gps_frame = NO_FRAME;
     static uint8_t svMessageNum = 0;
-    uint8_t svSatNum = 0, svPacketIdx = 0, svSatParam = 0;
+    uint8_t svSatNum = 0, svPacketIdx = 0, svSatParam = 0, satIndent = 0;
 
     switch (c) {
         case '$':
@@ -921,11 +947,12 @@ static bool gpsNewFrameNMEA(char c)
             string[offset] = 0;
             if (param == 0) {       //frame identification
                 gps_frame = NO_FRAME;
+                satSystem = string[1];
                 if (0 == strcmp(string, "GPGGA") || 0 == strcmp(string, "GNGGA")) {
                     gps_frame = FRAME_GGA;
                 } else if (0 == strcmp(string, "GPRMC") || 0 == strcmp(string, "GNRMC")) {
                     gps_frame = FRAME_RMC;
-                } else if (0 == strcmp(string, "GPGSV")) {
+                } else if (0 == strcmp(string, "GPGSV") || 0 == strcmp(string, "GLGSV")) {
                     gps_frame = FRAME_GSV;
                 }
             }
@@ -994,14 +1021,21 @@ static bool gpsNewFrameNMEA(char c)
                             break;
                         case 3:
                             // Total number of SVs visible
-                            GPS_numCh = grab_fields(string, 0);
+                            if (satSystem == 'P')
+                                GPS_gpsNumCh = grab_fields(string, 0);
+                            else if (satSystem == 'L')
+                                GPS_glonassNumCh = grab_fields(string, 0);
+                            GPS_numCh = GPS_gpsNumCh + GPS_glonassNumCh;
                             break;
                     }
                     if (param < 4)
                         break;
 
+                    if (satSystem == 'L' ) // GLONASS
+                        satIndent = GPS_gpsNumCh; // shift by the number of gps channels
+
                     svPacketIdx = (param - 4) / 4 + 1; // satellite number in packet, 1-4
-                    svSatNum    = svPacketIdx + (4 * (svMessageNum - 1)); // global satellite number
+                    svSatNum    = svPacketIdx + (4 * (svMessageNum - 1)) + satIndent; // global satellite number
                     svSatParam  = param - 3 - (4 * (svPacketIdx - 1)); // parameter number for satellite
 
                     if (svSatNum > GPS_SV_MAXSATS)

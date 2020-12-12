@@ -341,7 +341,9 @@ void i2cInit(I2CDevice device)
 #error Unknown MCU type
 #endif
 
-    pHandle->Init.Timing = i2cClockTIMINGR(i2cPclk, pDev->overClock ? 800 : 400, 0);
+    //pHandle->Init.Timing = i2cClockTIMINGR(i2cPclk, pDev->overClock ? 800 : 400, 0);
+
+    pHandle->Init.Timing = 0x00A01B5B;  // 400kHz, Rise 100ns, Fall 10ns    0x00500B6A, 0x00A01B5B
 
     pHandle->Init.OwnAddress1 = 0x0;
     pHandle->Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
